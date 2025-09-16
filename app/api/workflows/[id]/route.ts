@@ -1,8 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const workflowId = params.id
+    const { id } = await params
+    const workflowId = id
 
     // Mock workflow data - in real app, fetch from database
     const workflow = {
@@ -49,9 +53,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const workflowId = params.id
+    const { id } = await params
+    const workflowId = id
     const body = await request.json()
 
     // Mock workflow update
@@ -75,9 +83,13 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const workflowId = params.id
+    const { id } = await params
+    const workflowId = id
 
     // Mock workflow deletion
     return NextResponse.json({

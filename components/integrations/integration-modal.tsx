@@ -213,7 +213,20 @@ export function IntegrationModal({ integration, open, onOpenChange, onClose }: I
                     <LineChart data={responseTimeData}>
                       <XAxis dataKey="time" tick={{ fontSize: 12 }} />
                       <YAxis tick={{ fontSize: 12 }} />
-                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <ChartTooltip 
+                        content={({ active, payload, label, coordinate }) => {
+                          if (!active || !payload?.length) return null;
+                          return (
+                            <ChartTooltipContent 
+                              active={active}
+                              payload={payload}
+                              label={label}
+                              coordinate={coordinate}
+                              accessibilityLayer={false}
+                            />
+                          );
+                        }} 
+                      />
                       <Line
                         type="monotone"
                         dataKey="responseTime"
@@ -237,7 +250,20 @@ export function IntegrationModal({ integration, open, onOpenChange, onClose }: I
                     <BarChart data={errorData}>
                       <XAxis dataKey="endpoint" tick={{ fontSize: 12 }} />
                       <YAxis tick={{ fontSize: 12 }} />
-                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <ChartTooltip 
+                        content={({ active, payload, label, coordinate }) => {
+                          if (!active || !payload?.length) return null;
+                          return (
+                            <ChartTooltipContent 
+                              active={active}
+                              payload={payload}
+                              label={label}
+                              coordinate={coordinate}
+                              accessibilityLayer={false}
+                            />
+                          );
+                        }} 
+                      />
                       <Bar dataKey="errors" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>

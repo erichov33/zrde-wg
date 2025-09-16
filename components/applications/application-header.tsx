@@ -1,10 +1,16 @@
+"use client"
+
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Search, Filter, Download, RefreshCw } from "lucide-react"
+import { Search, Filter, Download, RefreshCw, Plus } from "lucide-react"
+import { ManualApplicationModal } from "./manual-application-modal"
 
 export function ApplicationHeader() {
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -13,6 +19,13 @@ export function ApplicationHeader() {
           <p className="text-muted-foreground">Manage and review application submissions</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button 
+            onClick={() => setIsModalOpen(true)}
+            className="gap-2 bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200"
+          >
+            <Plus className="h-4 w-4" />
+            Add Application
+          </Button>
           <Button variant="outline" size="sm" className="gap-2 bg-transparent">
             <Download className="h-4 w-4" />
             Export
@@ -45,6 +58,11 @@ export function ApplicationHeader() {
           </div>
         </CardContent>
       </Card>
+
+      <ManualApplicationModal 
+        open={isModalOpen} 
+        onOpenChange={setIsModalOpen} 
+      />
     </div>
   )
 }

@@ -1,40 +1,39 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Playfair_Display, Source_Sans_3 as Source_Sans_Pro } from "next/font/google"
+import { GeistSans } from "geist/font/sans"
+import { GeistMono } from "geist/font/mono"
 import { ThemeProvider } from "@/components/theme-provider"
-import "./globals.css"
-
-const playfairDisplay = Playfair_Display({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-playfair",
-  weight: ["400", "700"],
-})
-
-const sourceSansPro = Source_Sans_Pro({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-source-sans",
-  weight: ["400", "600"],
-})
+import { AuthProvider } from "@/lib/contexts/auth-context"
+import { ApplicationsProvider } from "@/lib/contexts/applications-context"
+import "@/app/globals.css"
+import { Toaster } from "sonner"
 
 export const metadata: Metadata = {
   title: "Zinduka Decision Engine",
   description: "AI-Powered Risk and Identity Decision Platform for African Financial Institutions",
-  generator: "Zinduka",
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode
-}>) {
+}) {
   return (
-    <html lang="en" className={`${playfairDisplay.variable} ${sourceSansPro.variable} dark`}>
-      <body className="antialiased">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
-          {children}
+    <html lang="en">
+      <body className={GeistSans.className}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <AuthProvider>
+            <ApplicationsProvider>
+              {children}
+            </ApplicationsProvider>
+          </AuthProvider>
         </ThemeProvider>
+        <Toaster position="top-right" richColors />
       </body>
     </html>
   )

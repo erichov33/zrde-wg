@@ -1,8 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const integrationId = params.id
+    const { id } = await params
+    const integrationId = id
 
     // Mock integration details with extended information
     const integration = {
@@ -49,36 +53,24 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
           successRate: 99.6,
         },
       },
-      recentLogs: [
+      recentActivity: [
         {
-          id: "log-001",
           timestamp: "2024-01-25T14:32:15Z",
-          endpoint: "/verify",
-          method: "POST",
-          status: "success",
-          responseTime: 189,
-          statusCode: 200,
-          requestId: "req-12847",
-        },
-        {
-          id: "log-002",
-          timestamp: "2024-01-25T14:31:45Z",
-          endpoint: "/authenticate",
-          method: "POST",
+          endpoint: "verify",
           status: "success",
           responseTime: 156,
-          statusCode: 200,
-          requestId: "req-12846",
         },
         {
-          id: "log-003",
-          timestamp: "2024-01-25T14:31:12Z",
-          endpoint: "/verify",
-          method: "POST",
+          timestamp: "2024-01-25T14:31:42Z",
+          endpoint: "authenticate",
+          status: "success",
+          responseTime: 203,
+        },
+        {
+          timestamp: "2024-01-25T14:30:18Z",
+          endpoint: "liveness-check",
           status: "error",
           responseTime: 5000,
-          statusCode: 500,
-          requestId: "req-12845",
           error: "Service temporarily unavailable",
         },
       ],
@@ -97,9 +89,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const integrationId = params.id
+    const { id } = await params
+    const integrationId = id
     const body = await request.json()
 
     // Mock integration update
@@ -122,9 +118,13 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const integrationId = params.id
+    const { id } = await params
+    const integrationId = id
 
     return NextResponse.json({
       message: `Integration ${integrationId} deleted successfully`,
