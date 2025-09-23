@@ -10,7 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Plus, Settings, Database, Globe, Key, TestTube, CheckCircle, XCircle, AlertCircle } from "lucide-react"
-import { WorkflowDefinition } from "@/lib/services/enhanced-decision-service"
+import type { WorkflowDefinition } from "@/lib/types/unified-workflow"
+import { 
+  DataSourceConfig, 
+  convertExternalSourcesToIds,
+  createDataRequirements 
+} from "@/lib/types/workflow-definitions"
 
 interface DataSourcePanelProps {
   workflow: Partial<WorkflowDefinition>
@@ -200,20 +205,36 @@ export function DataSourcePanel({ workflow, onWorkflowUpdate }: DataSourcePanelP
   }
 
   const updateWorkflowDataRequirements = () => {
-    const externalSources = dataSources
-      .filter(ds => ds.status === "connected")
-      .map(ds => ({
-        source: ds.name,
-        type: ds.type,
-        fields: getDataSourceFields(ds.type)
-      }))
+    if (!workflow) return
 
-    onWorkflowUpdate({
-      dataRequirements: {
-        ...workflow.dataRequirements,
-        external: externalSources
-      }
-    })
+    // Filter connected data sources
+    const connectedDataSources = dataSources.filter(ds => ds.status === "connected")
+
+    // Convert connected data sources to the format expected by WorkflowDefinition
+    const externalSources: DataSourceConfig[] = connectedDataSources.map(source => ({
+      id: source.id,
+      name: source.name,
+      type: source.type as any, // Will be properly typed
+      endpoint: source.endpoint,
+      timeout: 5000,
+      retries: 2,
+      enabled: true,
+      fields: getDataSourceFields(source.type)
+    }))
+
+    // Convert to string array for the WorkflowDefinition
+    const externalSourceIds = convertExternalSourcesToIds(externalSources)
+
+    const updatedWorkflow = {
+      ...workflow,
+      dataRequirements: createDataRequirements(
+        workflow.dataRequirements?.required || [],
+        workflow.dataRequirements?.optional || [],
+        externalSourceIds
+      )
+    }
+
+    onWorkflowUpdate(updatedWorkflow)
   }
 
   const getDataSourceFields = (type: DataSource["type"]): string[] => {

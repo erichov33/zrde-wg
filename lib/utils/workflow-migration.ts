@@ -1,11 +1,16 @@
 /**
  * Workflow Migration Utilities
  * 
- * Utilities to migrate from old workflow builders to the new consolidated builder
+ * Utilities to migrate from old workflow builders to the new unified workflow system
  */
 
-import type { ConsolidatedWorkflowNode, ConsolidatedWorkflowConnection, ConsolidatedWorkflowDefinition } from "@/components/workflows/consolidated-workflow-builder"
-import type { UnifiedWorkflowNode, WorkflowConnection } from "@/components/workflows/unified-workflow-builder"
+import type { 
+  WorkflowConfig, 
+  WorkflowNode, 
+  WorkflowConnection, 
+  NodeType,
+  ConnectionType 
+} from "@/lib/types/unified-workflow"
 
 /**
  * Migration interface for legacy workflow data
@@ -20,267 +25,212 @@ export interface LegacyWorkflowData {
 }
 
 /**
- * Migrate from unified workflow builder to consolidated builder
+ * Migrate from any legacy workflow format to unified workflow system
  */
-export function migrateFromUnifiedBuilder(
-  legacyData: {
-    nodes: UnifiedWorkflowNode[]
-    connections: WorkflowConnection[]
-    name?: string
-    description?: string
-  }
-): ConsolidatedWorkflowDefinition {
-  const migratedNodes: ConsolidatedWorkflowNode[] = legacyData.nodes.map(node => ({
-    id: node.id,
-    type: node.type === "condition" ? "decision" : node.type,
-    position: node.position,
-    data: {
-      ...node.data,
-      description: node.data.description || `${node.data.label} node`
-    }
-  }))
-
-  const migratedConnections: ConsolidatedWorkflowConnection[] = legacyData.connections.map(conn => ({
-    id: conn.id,
-    source: conn.source,
-    target: conn.target,
-    label: conn.label,
-    condition: conn.condition,
-    data: {}
-  }))
-
-  return {
-    id: `migrated_${Date.now()}`,
-    name: legacyData.name || "Migrated Workflow",
-    description: legacyData.description || "Workflow migrated from unified builder",
-    version: "1.0.0",
-    nodes: migratedNodes,
-    connections: migratedConnections,
-    dataRequirements: {
-      required: ["creditScore", "income", "debtToIncomeRatio"],
-      optional: ["employmentHistory", "bankingHistory"],
-      external: ["credit_bureau", "income_verification"]
-    },
-    metadata: {
-      created: new Date().toISOString(),
-      updated: new Date().toISOString(),
-      author: "migration_tool",
-      tags: ["migrated", "unified_builder"]
-    }
-  }
-}
-
-/**
- * Migrate from connected workflow builder to consolidated builder
- */
-export function migrateFromConnectedBuilder(
-  legacyData: LegacyWorkflowData
-): ConsolidatedWorkflowDefinition {
-  const migratedNodes: ConsolidatedWorkflowNode[] = legacyData.nodes.map(node => ({
-    id: node.id || `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    type: node.type || "action",
+export function migrateToUnifiedWorkflow(
+  legacyData: LegacyWorkflowData,
+  sourceType: "unified" | "connected" | "enhanced" | "consolidated" | "generic" = "generic"
+): WorkflowConfig {
+  const now = new Date()
+  
+  // Migrate nodes
+  const migratedNodes: WorkflowNode[] = legacyData.nodes.map(node => ({
+    id: node.id || `node-${Date.now()}-${Math.random()}`,
+    type: normalizeNodeType(node.type),
     position: node.position || { x: 0, y: 0 },
     data: {
-      label: node.data?.label || node.label || "Unnamed Node",
-      description: node.data?.description || node.description || `${node.type} node`,
-      config: node.data?.config || node.config || {},
-      ...node.data
+      label: node.data?.label || node.label || `${node.type} Node`,
+      description: node.data?.description || node.description,
+      config: node.data?.config || node.config || {}
+    },
+    metadata: {
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      version: "1"
     }
   }))
 
-  const migratedConnections: ConsolidatedWorkflowConnection[] = legacyData.connections.map(conn => ({
-    id: conn.id || `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+  // Migrate connections
+  const migratedConnections: WorkflowConnection[] = legacyData.connections.map(conn => ({
+    id: conn.id || `conn-${Date.now()}-${Math.random()}`,
     source: conn.source,
     target: conn.target,
+    type: normalizeConnectionType(conn.type || conn.label),
     label: conn.label,
-    condition: conn.condition,
-    data: conn.data || {}
+    conditions: conn.condition ? { condition: conn.condition } : undefined
   }))
 
-  return {
-    id: `migrated_${Date.now()}`,
+  // Create unified workflow config
+  const unifiedWorkflow: WorkflowConfig = {
+    id: `workflow-${Date.now()}`,
     name: legacyData.name || "Migrated Workflow",
-    description: legacyData.description || "Workflow migrated from connected builder",
+    description: legacyData.description || "",
     version: legacyData.version || "1.0.0",
+    mode: determineWorkflowMode(migratedNodes),
     nodes: migratedNodes,
     connections: migratedConnections,
     dataRequirements: {
-      required: ["creditScore", "income", "debtToIncomeRatio"],
-      optional: ["employmentHistory", "bankingHistory"],
-      external: ["credit_bureau", "income_verification"]
+      required: [],
+      optional: [],
+      external: []
     },
-    metadata: {
-      created: new Date().toISOString(),
-      updated: new Date().toISOString(),
-      author: "migration_tool",
-      tags: ["migrated", "connected_builder"]
-    }
-  }
-}
-
-/**
- * Generic migration function for any legacy workflow format
- */
-export function migrateWorkflow(
-  legacyData: LegacyWorkflowData,
-  sourceType: "unified" | "connected" | "generic" = "generic"
-): ConsolidatedWorkflowDefinition {
-  switch (sourceType) {
-    case "unified":
-      return migrateFromUnifiedBuilder(legacyData as any)
-    case "connected":
-      return migrateFromConnectedBuilder(legacyData)
-    default:
-      return migrateFromGenericFormat(legacyData)
-  }
-}
-
-/**
- * Migrate from generic workflow format
- */
-function migrateFromGenericFormat(
-  legacyData: LegacyWorkflowData
-): ConsolidatedWorkflowDefinition {
-  const migratedNodes: ConsolidatedWorkflowNode[] = legacyData.nodes.map((node, index) => {
-    // Handle various node formats
-    const nodeId = node.id || `node_${index}`
-    const nodeType = normalizeNodeType(node.type || "action")
-    const nodePosition = node.position || { x: index * 200, y: 100 }
-    
-    return {
-      id: nodeId,
-      type: nodeType,
-      position: nodePosition,
-      data: {
-        label: node.label || node.data?.label || `Node ${index + 1}`,
-        description: node.description || node.data?.description || `${nodeType} node`,
-        config: node.config || node.data?.config || {},
-        ...extractNodeData(node)
+    status: "draft" as const,
+    settings: {
+      autoSave: true,
+      validation: true,
+      execution: {
+        timeout: 30000,
+        retries: 3
       }
-    }
-  })
-
-  const migratedConnections: ConsolidatedWorkflowConnection[] = legacyData.connections.map((conn, index) => ({
-    id: conn.id || `conn_${index}`,
-    source: conn.source || conn.from,
-    target: conn.target || conn.to,
-    label: conn.label || conn.name,
-    condition: conn.condition || conn.rule,
-    data: conn.data || {}
-  }))
-
-  return {
-    id: `migrated_${Date.now()}`,
-    name: legacyData.name || "Migrated Workflow",
-    description: legacyData.description || "Workflow migrated from legacy format",
-    version: legacyData.version || "1.0.0",
-    nodes: migratedNodes,
-    connections: migratedConnections,
-    dataRequirements: {
-      required: ["creditScore", "income", "debtToIncomeRatio"],
-      optional: ["employmentHistory", "bankingHistory"],
-      external: ["credit_bureau", "income_verification"]
     },
     metadata: {
-      created: new Date().toISOString(),
-      updated: new Date().toISOString(),
-      author: "migration_tool",
-      tags: ["migrated", "generic"]
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      createdBy: "migration-tool",
+      tags: ["migrated", sourceType]
     }
   }
+
+  return unifiedWorkflow
 }
 
 /**
- * Normalize node types to consolidated format
+ * Normalize legacy node types to unified node types
  */
-function normalizeNodeType(type: string): ConsolidatedWorkflowNode["type"] {
-  const typeMap: Record<string, ConsolidatedWorkflowNode["type"]> = {
-    "condition": "decision",
-    "conditional": "decision",
-    "decision": "decision",
+function normalizeNodeType(type: string): NodeType {
+  const typeMap: Record<string, NodeType> = {
     "start": "start",
     "begin": "start",
-    "end": "end",
-    "finish": "end",
+    "initial": "start",
+    "condition": "condition",
+    "decision": "condition",
+    "if": "condition",
+    "rule": "condition",
     "action": "action",
     "task": "action",
+    "process": "action",
+    "end": "end",
+    "finish": "end",
+    "terminate": "end",
     "data_source": "data_source",
     "datasource": "data_source",
     "rule_set": "rule_set",
-    "rules": "rule_set"
+    "ruleset": "rule_set",
+    "notification": "notification",
+    "notify": "notification",
+    "integration": "integration",
+    "api": "integration",
+    "ai_decision": "ai_decision",
+    "ai": "ai_decision",
+    "batch_process": "batch_process",
+    "batch": "batch_process",
+    "audit_log": "audit_log",
+    "audit": "audit_log"
   }
 
   return typeMap[type.toLowerCase()] || "action"
 }
 
 /**
- * Extract node data from various formats
+ * Normalize legacy connection types to unified connection types
  */
-function extractNodeData(node: any): Record<string, any> {
-  const data: Record<string, any> = {}
-
-  // Extract common properties
-  if (node.rules) data.rules = node.rules
-  if (node.dataSource) data.dataSource = node.dataSource
-  if (node.conditions) data.conditions = node.conditions
-  if (node.businessLogic) data.businessLogic = node.businessLogic
-
-  // Extract nested data
-  if (node.data) {
-    Object.keys(node.data).forEach(key => {
-      if (!data[key]) {
-        data[key] = node.data[key]
-      }
-    })
+function normalizeConnectionType(type?: string): ConnectionType {
+  if (!type) return "default"
+  
+  const typeMap: Record<string, ConnectionType> = {
+    "success": "success",
+    "approved": "success",
+    "yes": "success",
+    "true": "success",
+    "failure": "failure",
+    "declined": "failure",
+    "no": "failure",
+    "false": "failure",
+    "error": "failure",
+    "conditional": "conditional",
+    "condition": "conditional",
+    "if": "conditional",
+    "default": "default",
+    "next": "default",
+    "continue": "default"
   }
 
-  return data
+  return typeMap[type.toLowerCase()] || "default"
+}
+
+/**
+ * Determine workflow mode based on node types
+ */
+function determineWorkflowMode(nodes: WorkflowNode[]): "simple" | "enhanced" | "enterprise" {
+  const nodeTypes = new Set(nodes.map(n => n.type))
+  
+  const enterpriseTypes = ["ai_decision", "batch_process", "audit_log"]
+  const enhancedTypes = ["data_source", "rule_set", "notification", "integration"]
+  
+  if (enterpriseTypes.some(type => nodeTypes.has(type as NodeType))) {
+    return "enterprise"
+  }
+  
+  if (enhancedTypes.some(type => nodeTypes.has(type as NodeType))) {
+    return "enhanced"
+  }
+  
+  return "simple"
 }
 
 /**
  * Validate migrated workflow
  */
 export function validateMigratedWorkflow(
-  workflow: ConsolidatedWorkflowDefinition
+  workflow: WorkflowConfig
 ): { isValid: boolean; errors: string[]; warnings: string[] } {
   const errors: string[] = []
   const warnings: string[] = []
 
-  // Check required fields
-  if (!workflow.name) errors.push("Workflow name is required")
-  if (!workflow.description) warnings.push("Workflow description is missing")
-  if (!workflow.version) warnings.push("Workflow version is missing")
-
-  // Check nodes
-  if (workflow.nodes.length === 0) {
-    errors.push("Workflow must have at least one node")
-  } else {
-    // Check for start and end nodes
-    const hasStart = workflow.nodes.some(n => n.type === "start")
-    const hasEnd = workflow.nodes.some(n => n.type === "end")
-    
-    if (!hasStart) warnings.push("Workflow should have a start node")
-    if (!hasEnd) warnings.push("Workflow should have an end node")
-
-    // Check node data
-    workflow.nodes.forEach((node, index) => {
-      if (!node.id) errors.push(`Node ${index} is missing an ID`)
-      if (!node.data.label) warnings.push(`Node ${node.id} is missing a label`)
-    })
+  // Basic validation
+  if (!workflow.name?.trim()) {
+    errors.push("Workflow name is required")
   }
 
-  // Check connections
-  workflow.connections.forEach((conn, index) => {
-    if (!conn.source) errors.push(`Connection ${index} is missing source`)
-    if (!conn.target) errors.push(`Connection ${index} is missing target`)
-    
-    // Check if referenced nodes exist
-    const sourceExists = workflow.nodes.some(n => n.id === conn.source)
-    const targetExists = workflow.nodes.some(n => n.id === conn.target)
-    
-    if (!sourceExists) errors.push(`Connection ${conn.id} references non-existent source node: ${conn.source}`)
-    if (!targetExists) errors.push(`Connection ${conn.id} references non-existent target node: ${conn.target}`)
-  })
+  if (workflow.nodes.length === 0) {
+    errors.push("Workflow must contain at least one node")
+  }
+
+  // Node validation
+  const startNodes = workflow.nodes.filter(n => n.type === "start")
+  if (startNodes.length === 0) {
+    errors.push("Workflow must have a start node")
+  } else if (startNodes.length > 1) {
+    warnings.push("Multiple start nodes detected")
+  }
+
+  const endNodes = workflow.nodes.filter(n => n.type === "end")
+  if (endNodes.length === 0) {
+    warnings.push("Workflow should have at least one end node")
+  }
+
+  // Connection validation
+  const nodeIds = new Set(workflow.nodes.map(n => n.id))
+  for (const connection of workflow.connections) {
+    if (!nodeIds.has(connection.source)) {
+      errors.push(`Connection source node ${connection.source} not found`)
+    }
+    if (!nodeIds.has(connection.target)) {
+      errors.push(`Connection target node ${connection.target} not found`)
+    }
+  }
+
+  // Check for orphaned nodes
+  const connectedNodeIds = new Set([
+    ...workflow.connections.map(c => c.source),
+    ...workflow.connections.map(c => c.target)
+  ])
+
+  for (const node of workflow.nodes) {
+    if (node.type !== "start" && !connectedNodeIds.has(node.id)) {
+      warnings.push(`Node ${node.data.label} is not connected`)
+    }
+  }
 
   return {
     isValid: errors.length === 0,
@@ -294,7 +244,7 @@ export function validateMigratedWorkflow(
  */
 export interface MigrationReport {
   success: boolean
-  migratedWorkflow?: ConsolidatedWorkflowDefinition
+  migratedWorkflow?: WorkflowConfig
   validation: {
     isValid: boolean
     errors: string[]
@@ -314,26 +264,22 @@ export interface MigrationReport {
  */
 export function performMigration(
   legacyData: LegacyWorkflowData,
-  sourceType: "unified" | "connected" | "generic" = "generic"
+  sourceType: "unified" | "connected" | "enhanced" | "consolidated" | "generic" = "generic"
 ): MigrationReport {
   try {
-    const migratedWorkflow = migrateWorkflow(legacyData, sourceType)
+    // Perform migration
+    const migratedWorkflow = migrateToUnifiedWorkflow(legacyData, sourceType)
+    
+    // Validate result
     const validation = validateMigratedWorkflow(migratedWorkflow)
     
+    // Generate statistics
     const statistics = {
       originalNodes: legacyData.nodes?.length || 0,
       migratedNodes: migratedWorkflow.nodes.length,
       originalConnections: legacyData.connections?.length || 0,
       migratedConnections: migratedWorkflow.connections.length,
-      dataLoss: [] as string[]
-    }
-
-    // Check for data loss
-    if (statistics.originalNodes !== statistics.migratedNodes) {
-      statistics.dataLoss.push(`Node count mismatch: ${statistics.originalNodes} -> ${statistics.migratedNodes}`)
-    }
-    if (statistics.originalConnections !== statistics.migratedConnections) {
-      statistics.dataLoss.push(`Connection count mismatch: ${statistics.originalConnections} -> ${statistics.migratedConnections}`)
+      dataLoss: [] // Could be enhanced to detect actual data loss
     }
 
     return {
@@ -347,7 +293,7 @@ export function performMigration(
       success: false,
       validation: {
         isValid: false,
-        errors: [error instanceof Error ? error.message : "Unknown migration error"],
+        errors: [error instanceof Error ? error.message : "Migration failed"],
         warnings: []
       },
       statistics: {
@@ -358,5 +304,103 @@ export function performMigration(
         dataLoss: ["Complete migration failure"]
       }
     }
+  }
+}
+
+/**
+ * Batch migrate multiple workflows
+ */
+export function batchMigrate(
+  workflows: Array<{ data: LegacyWorkflowData; sourceType?: string }>,
+  onProgress?: (completed: number, total: number) => void
+): MigrationReport[] {
+  const results: MigrationReport[] = []
+  
+  workflows.forEach((workflow, index) => {
+    const result = performMigration(
+      workflow.data, 
+      workflow.sourceType as any || "generic"
+    )
+    results.push(result)
+    
+    if (onProgress) {
+      onProgress(index + 1, workflows.length)
+    }
+  })
+  
+  return results
+}
+
+// Legacy function aliases for backward compatibility
+export const migrateWorkflow = migrateToUnifiedWorkflow
+export const migrateFromUnifiedBuilder = migrateToUnifiedWorkflow
+export const migrateFromConnectedBuilder = migrateToUnifiedWorkflow
+
+/**
+ * Migrate WorkflowConnection from old format to unified format
+ */
+export function migrateWorkflowConnection(
+  oldConnection: any
+): WorkflowConnection {
+  const baseConnection = {
+    id: oldConnection.id || `conn-${Date.now()}-${Math.random()}`,
+    source: oldConnection.source,
+    target: oldConnection.target,
+    type: normalizeConnectionType(oldConnection.type),
+    label: oldConnection.label
+  }
+
+  // Handle condition/conditions migration
+  if (oldConnection.conditions) {
+    // Already in new format
+    return {
+      ...baseConnection,
+      conditions: oldConnection.conditions,
+      condition: oldConnection.condition // Keep for backward compatibility
+    }
+  } else if (oldConnection.condition) {
+    // Migrate from old format
+    return {
+      ...baseConnection,
+      conditions: { default: oldConnection.condition },
+      condition: oldConnection.condition // Keep for backward compatibility
+    }
+  }
+
+  return baseConnection
+}
+
+/**
+ * Get the effective condition from a connection (handles both formats)
+ */
+export function getConnectionCondition(connection: WorkflowConnection): string | undefined {
+  // Prefer new conditions format
+  if (connection.conditions) {
+    if (typeof connection.conditions === 'string') {
+      return connection.conditions
+    }
+    if (connection.conditions.default) {
+      return connection.conditions.default
+    }
+    // Return first condition if multiple
+    const firstKey = Object.keys(connection.conditions)[0]
+    return firstKey ? connection.conditions[firstKey] : undefined
+  }
+  
+  // Fallback to legacy condition
+  return connection.condition
+}
+
+/**
+ * Set condition on a connection (updates both formats for compatibility)
+ */
+export function setConnectionCondition(
+  connection: WorkflowConnection, 
+  condition: string
+): WorkflowConnection {
+  return {
+    ...connection,
+    condition, // Legacy format
+    conditions: { default: condition } // New format
   }
 }

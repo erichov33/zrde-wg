@@ -81,12 +81,27 @@ export function WorkflowProperties({ selectedNode, onNodeUpdate }: WorkflowPrope
   const updateNodeData = (key: string, value: any) => {
     if (!selectedNode) return
     
-    onNodeUpdate(selectedNode.id, {
-      data: {
-        ...selectedNode.data,
-        [key]: value,
-      },
-    })
+    // Properties that should be stored in the config object
+    const configProperties = ['description']
+    
+    if (configProperties.includes(key)) {
+      onNodeUpdate(selectedNode.id, {
+        data: {
+          ...selectedNode.data,
+          config: {
+            ...selectedNode.data.config,
+            [key]: value,
+          },
+        },
+      })
+    } else {
+      onNodeUpdate(selectedNode.id, {
+        data: {
+          ...selectedNode.data,
+          [key]: value,
+        },
+      })
+    }
   }
 
   /**
@@ -285,7 +300,7 @@ export function WorkflowProperties({ selectedNode, onNodeUpdate }: WorkflowPrope
         <Label>Description</Label>
         <Textarea
           placeholder="Describe what this node does"
-          defaultValue={selectedNode?.data.description || ""}
+          defaultValue={selectedNode?.data.config?.description || ""}
           onChange={(e) => updateNodeData("description", e.target.value)}
         />
       </div>

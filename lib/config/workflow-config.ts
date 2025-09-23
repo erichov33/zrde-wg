@@ -337,7 +337,7 @@ export class WorkflowConfigurationManager {
         name: 'Simple Approval Configuration',
         version: '1.0.0',
         description: 'Simplified configuration for basic approval workflows',
-        ruleSets: [defaultRuleSets[0]], // Only credit score rules
+        ruleSets: defaultRuleSets.slice(0, 1), // Only credit score rules (first rule set)
         nodeConfigurations: {
           credit_check: {
             timeout: 15000,
@@ -481,7 +481,7 @@ export class WorkflowConfigurationManager {
     const regex = /(\w+)\s*(>=|<=|>|<|==|!=)\s*(\d+(?:\.\d+)?)/;
     const match = condition.match(regex);
     
-    if (!match) return null;
+    if (!match || !match[1] || !match[2] || !match[3]) return null;
     
     return {
       field: match[1],

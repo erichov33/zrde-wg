@@ -9,12 +9,20 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Play, RotateCcw, Download, Upload, AlertCircle, CheckCircle, XCircle } from "lucide-react"
-import { WorkflowDefinition } from "@/lib/services/enhanced-decision-service"
-import { EnhancedWorkflowNode } from "./enhanced-workflow-builder"
+import type { WorkflowDefinition, WorkflowNode as UnifiedWorkflowNode } from "@/lib/types/unified-workflow"
+
+export type BusinessLogicTemplate = {
+  id: string
+  name: string
+  description: string
+  businessLogic: string
+  requiredFields: string[]
+}
 
 interface SimulationPanelProps {
   workflow: Partial<WorkflowDefinition>
-  nodes: EnhancedWorkflowNode[]
+  nodes?: UnifiedWorkflowNode[]
+  businessLogicTemplates?: BusinessLogicTemplate[]
 }
 
 interface TestCase {
@@ -36,7 +44,7 @@ interface SimulationResult {
   warnings: string[]
 }
 
-export function SimulationPanel({ workflow, nodes }: SimulationPanelProps) {
+export function SimulationPanel({ workflow, nodes = [], businessLogicTemplates = [] }: SimulationPanelProps) {
   const [activeTab, setActiveTab] = useState("test-cases")
   const [testCases, setTestCases] = useState<TestCase[]>([
     {

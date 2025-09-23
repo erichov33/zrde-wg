@@ -1,0 +1,15 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    // General code quality
+    "prefer-const": "error",
+    "no-var": "error",
+    "no-console": "off",
+    "no-debugger": "warn",
+    
+    // React specific
+    "react-hooks/exhaustive-deps": "off",
+    "react/jsx-key": "error",
+    "react/no-unescaped-entities": "off"
+  }
+}

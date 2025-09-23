@@ -1,11 +1,49 @@
-import { RuleEngine, RuleSet, Rule, ExecutionContext } from '@/lib/engines/rule-engine'
+import { RuleEngine, RuleSet, Rule, ApplicationData, ExternalData, UserContext } from '@/lib/engines/rule-engine'
 import { EnhancedDecisionService } from './enhanced-decision-service'
+
+// Enhanced type definitions to replace 'any' types
+export interface NodeConfig {
+  // Common config properties
+  name?: string
+  description?: string
+  
+  // Decision node specific
+  ruleSetId?: string
+  decisionLogic?: string
+  
+  // Data source node specific
+  dataSourceId?: string
+  endpoint?: string
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  headers?: Record<string, string>
+  
+  // Action node specific
+  actionType?: 'email' | 'webhook' | 'database' | 'api_call' | 'notification'
+  actionConfig?: {
+    url?: string
+    method?: string
+    payload?: Record<string, unknown>
+    template?: string
+  }
+  
+  // Approval node specific
+  approvers?: string[]
+  approvalType?: 'single' | 'multiple' | 'unanimous'
+  timeoutHours?: number
+  
+  // Condition node specific
+  condition?: string
+  operator?: string
+  value?: unknown
+  
+  [key: string]: unknown // Allow additional config
+}
 
 export interface WorkflowNode {
   id: string
   type: 'start' | 'decision' | 'action' | 'end' | 'condition' | 'data-source' | 'approval'
   name: string
-  config: Record<string, any>
+  config: NodeConfig
   position: { x: number; y: number }
   ruleSetId?: string
   dataSourceId?: string
@@ -16,6 +54,7 @@ export interface WorkflowConnection {
   sourceId: string
   targetId: string
   condition?: string
+  conditions?: Record<string, string> | string
   label?: string
 }
 
@@ -32,11 +71,29 @@ export interface Workflow {
   updatedAt: Date
 }
 
+export interface NodeExecutionInput {
+  applicationData?: ApplicationData
+  externalData?: ExternalData
+  userContext?: UserContext
+  previousResults?: Record<string, unknown>
+  variables?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface NodeExecutionOutput {
+  success: boolean
+  data?: Record<string, unknown>
+  nextNodeId?: string
+  error?: string
+  variables?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 export interface ExecutionResult {
   workflowId: string
   executionId: string
   status: 'success' | 'error' | 'pending'
-  result: any
+  result: NodeExecutionOutput
   executionPath: string[]
   executionTime: number
   errors?: string[]
@@ -48,8 +105,8 @@ export interface ExecutionLog {
   nodeId: string
   nodeName: string
   action: string
-  input: any
-  output: any
+  input: NodeExecutionInput
+  output: NodeExecutionOutput
   duration: number
   status: 'success' | 'error' | 'skipped'
   message?: string
@@ -57,10 +114,21 @@ export interface ExecutionLog {
 
 export interface ExecutionRequest {
   workflowId: string
-  input: Record<string, any>
-  context?: Record<string, any>
+  input: NodeExecutionInput
+  context?: Record<string, unknown>
   simulationMode?: boolean
   userId?: string
+}
+
+// Enhanced ExecutionContext with proper typing
+export interface ExecutionContext {
+  applicationData: ApplicationData
+  externalData?: ExternalData
+  userContext?: UserContext
+  variables: Record<string, unknown>
+  executionId: string
+  simulationMode: boolean
+  [key: string]: unknown
 }
 
 export class WorkflowExecutionService {
@@ -163,28 +231,30 @@ export class WorkflowExecutionService {
           id: 'risk-assessment-rules',
           name: 'Risk Assessment Rules',
           description: 'Rules for calculating loan risk score',
+          executionOrder: 'sequential',
           rules: [
             {
               id: 'credit-score-rule',
-              name: 'Credit Score Assessment',
+              name: 'Credit Score Assessment', 
               description: 'Evaluate credit score impact',
               conditions: [
                 {
+                  id: 'credit_score_rule_check',
                   field: 'credit_score',
-                  operator: 'gte',
+                  operator: 'greater_than_or_equal',
                   value: 750,
                   dataType: 'number'
                 }
               ],
+              logicalOperator: 'AND',
               actions: [
                 {
-                  type: 'set_variable',
-                  target: 'credit_risk',
+                  type: 'set_score',
                   value: 0.1
                 }
               ],
               priority: 1,
-              isActive: true
+              enabled: true
             },
             {
               id: 'income-rule',
@@ -192,35 +262,31 @@ export class WorkflowExecutionService {
               description: 'Assess income stability',
               conditions: [
                 {
+                  id: 'annual_income_rule_check',
                   field: 'annual_income',
-                  operator: 'gte',
+                  operator: 'greater_than_or_equal',
                   value: 50000,
                   dataType: 'number'
                 },
                 {
+                  id: 'employment_years_rule_check',
                   field: 'employment_years',
-                  operator: 'gte',
+                  operator: 'greater_than_or_equal',
                   value: 2,
                   dataType: 'number'
                 }
               ],
+              logicalOperator: 'AND',
               actions: [
                 {
-                  type: 'set_variable',
-                  target: 'income_risk',
+                  type: 'set_score',
                   value: 0.2
                 }
               ],
               priority: 2,
-              isActive: true
+              enabled: true
             }
-          ],
-          aggregation: {
-            method: 'weighted_average',
-            weights: { credit_risk: 0.6, income_risk: 0.4 },
-            outputVariable: 'risk_score'
-          },
-          isActive: true
+          ]
         }
       ],
       isActive: true,
@@ -239,7 +305,7 @@ export class WorkflowExecutionService {
       workflowId: request.workflowId,
       executionId,
       status: 'pending',
-      result: null,
+      result: { success: false },
       executionPath: [],
       executionTime: 0,
       logs: []
@@ -253,7 +319,12 @@ export class WorkflowExecutionService {
 
       // Initialize execution context
       const context: ExecutionContext = {
+        applicationData: request.input.applicationData || {} as ApplicationData,
+        externalData: request.input.externalData,
+        userContext: request.input.userContext,
         variables: { ...request.input, ...request.context },
+        executionId,
+        simulationMode: request.simulationMode || false,
         metadata: {
           workflowId: request.workflowId,
           executionId,
@@ -290,7 +361,7 @@ export class WorkflowExecutionService {
     node: WorkflowNode, 
     context: ExecutionContext, 
     result: ExecutionResult
-  ): Promise<any> {
+  ): Promise<NodeExecutionOutput> {
     const nodeStartTime = Date.now()
     result.executionPath.push(node.id)
 
@@ -300,7 +371,7 @@ export class WorkflowExecutionService {
       nodeName: node.name,
       action: `execute_${node.type}`,
       input: { ...context.variables },
-      output: null,
+      output: { success: false },
       duration: 0,
       status: 'success'
     }
@@ -362,73 +433,97 @@ export class WorkflowExecutionService {
     }
   }
 
-  private async executeStartNode(node: WorkflowNode, context: ExecutionContext): Promise<any> {
-    return { status: 'started', timestamp: new Date() }
+  private async executeStartNode(node: WorkflowNode, context: ExecutionContext): Promise<NodeExecutionOutput> {
+    return { success: true, data: { status: 'started', timestamp: new Date() } }
   }
 
-  private async executeDataSourceNode(node: WorkflowNode, context: ExecutionContext): Promise<any> {
+  private async executeDataSourceNode(node: WorkflowNode, context: ExecutionContext): Promise<NodeExecutionOutput> {
     const { dataSources } = node.config
     const results: Record<string, any> = {}
 
-    for (const dataSourceId of dataSources || []) {
+    const dataSourceList = Array.isArray(dataSources) ? dataSources : []
+    for (const dataSourceId of dataSourceList) {
       // Simulate data source call
       const data = await this.fetchDataFromSource(dataSourceId, context.variables)
       results[dataSourceId] = data
     }
 
-    return results
+    return { success: true, data: results }
   }
 
-  private async executeDecisionNode(workflow: Workflow, node: WorkflowNode, context: ExecutionContext): Promise<any> {
+  private async executeDecisionNode(workflow: Workflow, node: WorkflowNode, context: ExecutionContext): Promise<NodeExecutionOutput> {
     const ruleSet = workflow.ruleSets.find(rs => rs.id === node.ruleSetId)
     if (!ruleSet) {
       throw new Error(`RuleSet not found: ${node.ruleSetId}`)
     }
 
-    const decision = await this.ruleEngine.executeRuleSet(ruleSet, context)
-    return decision
+    const ruleContext = {
+      applicationData: context.applicationData,
+      externalData: context.externalData,
+      userContext: context.userContext
+    }
+    const decision = RuleEngine.executeRuleSet(ruleSet, ruleContext)
+    return { success: true, data: decision as unknown as Record<string, unknown> }
   }
 
-  private async executeConditionNode(node: WorkflowNode, context: ExecutionContext): Promise<any> {
+  private async executeConditionNode(node: WorkflowNode, context: ExecutionContext): Promise<NodeExecutionOutput> {
     const { condition } = node.config
-    const result = this.evaluateCondition(condition, context.variables)
-    return { conditionResult: result }
+    const result = this.evaluateCondition(condition || '', context.variables)
+    return { success: true, data: { conditionResult: result } }
   }
 
-  private async executeActionNode(node: WorkflowNode, context: ExecutionContext): Promise<any> {
+  private async executeActionNode(node: WorkflowNode, context: ExecutionContext): Promise<NodeExecutionOutput> {
     const { action, reason } = node.config
+    const metadata = context.metadata as any
     
     // Simulate action execution
-    if (!context.metadata.simulationMode) {
+    if (!metadata?.simulationMode) {
       // In real mode, execute actual action
-      await this.performAction(action, context.variables)
+      await this.performAction(action as string, context.variables)
     }
 
-    return { action, reason, executed: !context.metadata.simulationMode }
+    return { 
+      success: true, 
+      data: { 
+        action: metadata?.action, 
+        reason: metadata?.reason, 
+        executed: !metadata?.simulationMode 
+      } 
+    }
   }
 
-  private async executeApprovalNode(node: WorkflowNode, context: ExecutionContext): Promise<any> {
+  private async executeApprovalNode(node: WorkflowNode, context: ExecutionContext): Promise<NodeExecutionOutput> {
     const { reviewers, timeout } = node.config
+    const metadata = context.metadata as any
     
-    if (context.metadata.simulationMode) {
+    if (metadata?.simulationMode) {
       // In simulation mode, auto-approve for testing
-      return { status: 'approved', reviewer: 'simulation', timestamp: new Date() }
+      return { 
+        success: true, 
+        data: { status: 'approved', reviewer: 'simulation', timestamp: new Date() } 
+      }
     }
 
     // In real mode, create approval request
     return {
-      status: 'pending_approval',
-      reviewers,
-      timeout,
-      requestId: `approval_${Date.now()}`
+      success: true,
+      data: {
+        status: 'pending_approval',
+        reviewers: metadata?.reviewers,
+        timeout: metadata?.timeout,
+        requestId: `approval_${Date.now()}`
+      }
     }
   }
 
-  private async executeEndNode(node: WorkflowNode, context: ExecutionContext): Promise<any> {
+  private async executeEndNode(node: WorkflowNode, context: ExecutionContext): Promise<NodeExecutionOutput> {
     return { 
-      status: 'completed', 
-      timestamp: new Date(),
-      finalResult: context.variables 
+      success: true,
+      data: {
+        status: 'completed', 
+        timestamp: new Date(),
+        finalResult: context.variables 
+      }
     }
   }
 
@@ -563,8 +658,8 @@ export class WorkflowExecutionService {
 
     // Validate rule sets
     for (const ruleSet of workflow.ruleSets) {
-      const ruleSetValidation = await this.ruleEngine.validateRuleSet(ruleSet)
-      if (!ruleSetValidation.isValid) {
+      const ruleSetValidation = await RuleEngine.validateRuleSet(ruleSet)
+      if (!ruleSetValidation.valid) {
         errors.push(`RuleSet ${ruleSet.name}: ${ruleSetValidation.errors.join(', ')}`)
       }
     }

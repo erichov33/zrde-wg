@@ -1,5 +1,76 @@
 import { z } from "zod"
 
+// Enhanced type definitions to replace 'any' types
+export interface ApplicationData {
+  personalInfo: {
+    firstName: string
+    lastName: string
+    email: string
+    phone: string
+    dateOfBirth: string
+    ssn?: string
+  }
+  financialInfo: {
+    annualIncome: number
+    employmentStatus: string
+    monthlyDebt: number
+    requestedAmount: number
+  }
+  address: {
+    street: string
+    city: string
+    state: string
+    zipCode: string
+    country: string
+  }
+  [key: string]: unknown // Allow additional fields
+}
+
+export interface ExternalData {
+  creditScore?: number
+  creditHistory?: CreditHistoryData
+  fraudScore?: number
+  incomeVerification?: IncomeVerificationData
+  kycStatus?: KYCData
+  [key: string]: unknown
+}
+
+export interface CreditHistoryData {
+  score: number
+  paymentHistory: string
+  creditUtilization: number
+  lengthOfHistory: number
+  newCredit: number
+  creditMix: number
+}
+
+export interface IncomeVerificationData {
+  verified: boolean
+  monthlyIncome: number
+  employmentVerified: boolean
+  employer: string
+}
+
+export interface KYCData {
+  status: "verified" | "pending" | "failed"
+  documentType: string
+  verificationLevel: string
+}
+
+export interface UserContext {
+  userId: string
+  roles: string[]
+  permissions: string[]
+}
+
+export interface RuleActionValue {
+  score?: number
+  flag?: string
+  document?: string
+  message?: string
+  [key: string]: unknown
+}
+
 // Rule Types and Schemas
 export const OperatorSchema = z.enum([
   "equals", "not_equals", "greater_than", "less_than", 
@@ -16,7 +87,7 @@ export const ConditionSchema = z.object({
   id: z.string(),
   field: z.string(),
   operator: OperatorSchema,
-  value: z.any(),
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.unknown()), z.null()]),
   dataType: DataTypeSchema,
   description: z.string().optional()
 })
@@ -31,7 +102,7 @@ export const RuleSchema = z.object({
   logicalOperator: z.enum(["AND", "OR"]).default("AND"),
   actions: z.array(z.object({
     type: z.enum(["approve", "decline", "review", "set_score", "add_flag", "require_document"]),
-    value: z.any().optional(),
+    value: z.union([z.string(), z.number(), z.object({}).passthrough()]).optional(),
     message: z.string().optional()
   })),
   metadata: z.object({
@@ -62,26 +133,21 @@ export type Condition = z.infer<typeof ConditionSchema>
 export type Rule = z.infer<typeof RuleSchema>
 export type RuleSet = z.infer<typeof RuleSetSchema>
 
-// Rule Execution Context
+// Updated interfaces with proper typing
 export interface RuleExecutionContext {
-  applicationData: any
-  externalData?: Record<string, any>
-  userContext?: {
-    userId: string
-    roles: string[]
-    permissions: string[]
-  }
-  metadata?: Record<string, any>
+  applicationData: ApplicationData
+  externalData?: ExternalData
+  userContext?: UserContext
+  metadata?: Record<string, unknown>
 }
 
-// Rule Execution Result
 export interface RuleExecutionResult {
   ruleId: string
   ruleName: string
   matched: boolean
   actions: Array<{
     type: string
-    value?: any
+    value?: RuleActionValue
     message?: string
   }>
   executionTime: number
@@ -89,8 +155,8 @@ export interface RuleExecutionResult {
     conditionId: string
     field: string
     operator: string
-    expectedValue: any
-    actualValue: any
+    expectedValue: unknown
+    actualValue: unknown
     matched: boolean
   }>
 }
@@ -180,15 +246,15 @@ export class RuleEngine {
   
   private static getFieldValue(fieldPath: string, context: RuleExecutionContext): any {
     const paths = fieldPath.split('.')
-    let value = context.applicationData
+    let value: any = context.applicationData
     
     for (const path of paths) {
       if (value && typeof value === 'object' && path in value) {
-        value = value[path]
+        value = (value as any)[path]
       } else {
         // Check external data if not found in application data
         if (context.externalData && path in context.externalData) {
-          value = context.externalData[path]
+          value = (context.externalData as any)[path]
         } else {
           return undefined
         }
@@ -229,7 +295,13 @@ export class RuleEngine {
       ruleId: rule.id,
       ruleName: rule.name,
       matched: ruleMatched,
-      actions: ruleMatched ? rule.actions : [],
+      actions: ruleMatched ? rule.actions.map(action => ({
+        type: action.type,
+        value: typeof action.value === 'object' ? action.value as RuleActionValue : 
+               action.value !== undefined ? { value: action.value } as RuleActionValue : 
+               undefined,
+        message: action.message
+      })) : [],
       executionTime,
       conditions: conditionResults
     }
@@ -240,10 +312,9 @@ export class RuleEngine {
     const results: RuleExecutionResult[] = []
     
     // Sort rules by priority if needed
-    let rulesToExecute = [...ruleSet.rules]
-    if (ruleSet.executionOrder === "priority") {
-      rulesToExecute.sort((a, b) => (b.priority || 0) - (a.priority || 0))
-    }
+    const rulesToExecute = ruleSet.executionOrder === "priority" 
+      ? [...ruleSet.rules].sort((a, b) => (b.priority || 0) - (a.priority || 0))
+      : [...ruleSet.rules]
     
     // Execute rules
     for (const rule of rulesToExecute) {
@@ -269,12 +340,12 @@ export class RuleEngine {
   }
   
   private static aggregateDecision(results: RuleExecutionResult[]): RuleSetExecutionResult['finalDecision'] {
-    const decision = {
-      outcome: "review" as const,
+    const decision: RuleSetExecutionResult['finalDecision'] = {
+      outcome: "review",
       score: 0,
-      flags: [] as string[],
-      requiredDocuments: [] as string[],
-      messages: [] as string[]
+      flags: [],
+      requiredDocuments: [],
+      messages: []
     }
     
     let approveCount = 0
@@ -299,17 +370,33 @@ export class RuleEngine {
               break
             case "set_score":
               if (typeof action.value === 'number') {
-                decision.score = Math.max(decision.score, action.value)
+                decision.score = Math.max(decision.score || 0, action.value)
               }
               break
             case "add_flag":
-              if (action.value && !decision.flags.includes(action.value)) {
-                decision.flags.push(action.value)
+              if (action.value) {
+                let flagValue: string | undefined
+                if (typeof action.value === 'object') {
+                  flagValue = (action.value as any).flag || (action.value as any).value
+                } else {
+                  flagValue = String(action.value)
+                }
+                if (flagValue && !decision.flags.includes(flagValue)) {
+                  decision.flags.push(flagValue)
+                }
               }
               break
             case "require_document":
-              if (action.value && !decision.requiredDocuments.includes(action.value)) {
-                decision.requiredDocuments.push(action.value)
+              if (action.value) {
+                let docValue: string | undefined
+                if (typeof action.value === 'object') {
+                  docValue = (action.value as any).document || (action.value as any).value
+                } else {
+                  docValue = String(action.value)
+                }
+                if (docValue && !decision.requiredDocuments.includes(docValue)) {
+                  decision.requiredDocuments.push(docValue)
+                }
               }
               break
           }

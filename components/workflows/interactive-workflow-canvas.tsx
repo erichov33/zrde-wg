@@ -20,7 +20,7 @@ import {
   Eye,
   EyeOff
 } from "lucide-react"
-import type { UnifiedWorkflowNode, WorkflowConnection } from "./unified-workflow-builder"
+import type { WorkflowNode as UnifiedWorkflowNode, WorkflowConnection } from "@/lib/types/unified-workflow"
 
 interface InteractiveWorkflowCanvasProps {
   nodes: UnifiedWorkflowNode[]

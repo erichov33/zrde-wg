@@ -19,6 +19,7 @@ export interface IWorkflowConnection {
   target: string
   label?: string
   condition?: string
+  conditions?: Record<string, string> | string
   data?: Record<string, any>
 }
 
@@ -34,7 +35,7 @@ export interface IWorkflowDefinition {
 }
 
 // Supporting types
-export type WorkflowNodeType = "start" | "decision" | "action" | "end" | "data_source" | "rule_set"
+export type WorkflowNodeType = "start" | "decision" | "action" | "end" | "data_source" | "rule_set" | "validation" | "integration" | "notification" | "ai_decision" | "batch_process" | "audit_log"
 
 export interface Position {
   x: number

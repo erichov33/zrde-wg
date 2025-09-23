@@ -3,21 +3,23 @@
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
+import { Switch } from "@/components/ui/switch"
 import { Plus, Trash2, Copy, Edit, Play, Save } from "lucide-react"
-import { Rule, Condition, Operator, DataType, RuleTemplates } from "@/lib/engines/rule-engine"
-import { WorkflowDefinition } from "@/lib/services/enhanced-decision-service"
-import { EnhancedWorkflowNode } from "./enhanced-workflow-builder"
+import { Rule, RuleTemplates, Condition, Operator, DataType } from "@/lib/engines/rule-engine"
+import type { WorkflowDefinition, WorkflowNode } from "@/lib/types/unified-workflow"
+import { RuleEditor } from "./rule-editor"
+import type { BusinessRule } from "@/lib/types"
+import { convertBusinessRuleToRule, convertRuleToBusinessRule } from "@/lib/utils/rule-type-converter"
 
 interface RuleConfigurationPanelProps {
-  nodes: EnhancedWorkflowNode[]
-  onNodeUpdate: (nodeId: string, updates: Partial<EnhancedWorkflowNode>) => void
+  nodes: WorkflowNode[]
+  onNodeUpdate: (nodeId: string, updates: Partial<WorkflowNode>) => void
   workflow: Partial<WorkflowDefinition>
   onWorkflowUpdate: (updates: Partial<WorkflowDefinition>) => void
 }
@@ -29,50 +31,54 @@ export function RuleConfigurationPanel({
   onWorkflowUpdate 
 }: RuleConfigurationPanelProps) {
   const [selectedRule, setSelectedRule] = useState<Rule | null>(null)
-  const [editingRule, setEditingRule] = useState<Partial<Rule> | null>(null)
+  const [editingRule, setEditingRule] = useState<BusinessRule | null>(null)
+  const [showRuleEditor, setShowRuleEditor] = useState(false)
 
   // Get all rules from condition and rule_set nodes
   const allRules = nodes
     .filter(node => node.type === "condition" || node.type === "rule_set")
     .flatMap(node => node.data.rules || [])
 
+  // Get available fields from all nodes
+  const availableFields = nodes
+    .flatMap(node => Object.keys(node.data || {}))
+    .filter(field => field !== 'rules')
+    .concat(['creditScore', 'income', 'debtToIncomeRatio', 'applicationAmount', 'employmentStatus'])
+
   const createNewRule = () => {
-    const newRule: Partial<Rule> = {
-      id: `rule_${Date.now()}`,
-      name: "New Rule",
-      description: "",
-      priority: 50,
-      enabled: true,
-      conditions: [],
-      logicalOperator: "AND",
-      actions: []
-    }
-    setEditingRule(newRule)
+    setEditingRule(null)
+    setShowRuleEditor(true)
   }
 
-  const saveRule = () => {
-    if (!editingRule || !editingRule.id) return
-
-    const rule = editingRule as Rule
-    
+  const handleSaveRule = (rule: BusinessRule) => {
     // Find the first condition or rule_set node to add this rule to
     const targetNode = nodes.find(node => 
       node.type === "condition" || node.type === "rule_set"
     )
     
     if (targetNode) {
+      // Convert BusinessRule to Rule type for compatibility
+      const convertedRule = convertBusinessRuleToRule(rule)
       const existingRules = targetNode.data.rules || []
       const updatedRules = existingRules.some(r => r.id === rule.id)
-        ? existingRules.map(r => r.id === rule.id ? rule : r)
-        : [...existingRules, rule]
+        ? existingRules.map(r => r.id === rule.id ? convertedRule : r)
+        : [...existingRules, convertedRule]
       
       onNodeUpdate(targetNode.id, {
         data: { ...targetNode.data, rules: updatedRules }
       })
+      
+      // Set selectedRule with the converted Rule
+      setSelectedRule(convertedRule)
     }
     
+    setShowRuleEditor(false)
     setEditingRule(null)
-    setSelectedRule(rule)
+  }
+
+  const handleCancelEdit = () => {
+    setShowRuleEditor(false)
+    setEditingRule(null)
   }
 
   const deleteRule = (ruleId: string) => {
@@ -96,20 +102,37 @@ export function RuleConfigurationPanel({
       id: `rule_${Date.now()}`,
       name: `${rule.name} (Copy)`,
       metadata: {
-        ...rule.metadata,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        createdBy: rule.metadata?.createdBy || "system",
+        version: rule.metadata?.version || "1.0.0",
+        ...rule.metadata
       }
     }
-    setEditingRule(duplicatedRule)
+    // Convert Rule to BusinessRule for editing
+    const businessRule = convertRuleToBusinessRule(duplicatedRule)
+    setEditingRule(businessRule)
   }
 
   const loadTemplate = (templateKey: string) => {
     const templates = RuleTemplates as any
-    const template = templates[templateKey.split('.')[0]]?.[templateKey.split('.')[1]]
+    const keyParts = templateKey.split('.')
+    
+    if (keyParts.length < 2) {
+      return
+    }
+    
+    const category = keyParts[0]
+    const templateName = keyParts[1]
+    
+    if (!category || !templateName) {
+      return
+    }
+    
+    const template = templates[category]?.[templateName]
     
     if (template) {
-      setEditingRule({
+      const templateRule: Rule = {
         ...template,
         id: `rule_${Date.now()}`,
         metadata: {
@@ -118,7 +141,10 @@ export function RuleConfigurationPanel({
           createdBy: "current_user",
           version: "1.0.0"
         }
-      })
+      }
+      // Convert Rule template to BusinessRule for editing
+      const businessRule = convertRuleToBusinessRule(templateRule)
+      setEditingRule(businessRule)
     }
   }
 
@@ -195,7 +221,7 @@ export function RuleConfigurationPanel({
                       className="h-6 w-6 p-0"
                       onClick={(e) => {
                         e.stopPropagation()
-                        setEditingRule(rule)
+                        setEditingRule(convertRuleToBusinessRule(rule))
                       }}
                     >
                       <Edit className="h-3 w-3" />
@@ -240,16 +266,21 @@ export function RuleConfigurationPanel({
       {/* Rule Editor */}
       <div className="flex-1 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm">
         {editingRule ? (
-          <RuleEditor 
-            rule={editingRule}
-            onRuleChange={setEditingRule}
-            onSave={saveRule}
+          <InlineRuleEditor 
+            rule={convertBusinessRuleToRule(editingRule)}
+            onRuleChange={(rule) => {
+              // Only convert if we have a complete rule with required fields
+              if (rule.id && rule.name && rule.priority !== undefined && rule.conditions && rule.actions) {
+                setEditingRule(convertRuleToBusinessRule(rule as Rule))
+              }
+            }}
+            onSave={() => editingRule && handleSaveRule(editingRule)}
             onCancel={() => setEditingRule(null)}
           />
         ) : selectedRule ? (
           <RuleViewer 
             rule={selectedRule}
-            onEdit={() => setEditingRule(selectedRule)}
+            onEdit={() => setEditingRule(convertRuleToBusinessRule(selectedRule))}
           />
         ) : (
           <div className="flex items-center justify-center h-full">
@@ -264,8 +295,8 @@ export function RuleConfigurationPanel({
   )
 }
 
-// Rule Editor Component
-function RuleEditor({ 
+// Inline Rule Editor Component
+function InlineRuleEditor({ 
   rule, 
   onRuleChange, 
   onSave, 
@@ -293,7 +324,25 @@ function RuleEditor({
 
   const updateCondition = (index: number, updates: Partial<Condition>) => {
     const updatedConditions = [...(rule.conditions || [])]
-    updatedConditions[index] = { ...updatedConditions[index], ...updates }
+    const existingCondition = updatedConditions[index]
+    
+    // Safety check: ensure the condition exists at the given index
+    if (!existingCondition) {
+      console.warn(`Condition at index ${index} does not exist`)
+      return
+    }
+    
+    // Only update properties that are actually provided in updates
+    const updatedCondition: Condition = {
+      id: updates.id ?? existingCondition.id,
+      field: updates.field ?? existingCondition.field,
+      operator: updates.operator ?? existingCondition.operator,
+      value: updates.value !== undefined ? updates.value : existingCondition.value,
+      dataType: updates.dataType ?? existingCondition.dataType,
+      description: updates.description !== undefined ? updates.description : existingCondition.description
+    }
+    
+    updatedConditions[index] = updatedCondition
     onRuleChange({ ...rule, conditions: updatedConditions })
   }
 
@@ -573,7 +622,7 @@ function ConditionEditor({
         <div>
           <Label>Value</Label>
           <Input
-            value={condition.value}
+            value={condition.value?.toString() || ""}
             onChange={(e) => onUpdate({ value: e.target.value })}
             placeholder="Enter comparison value"
           />
@@ -738,7 +787,7 @@ function RuleViewer({
                   </div>
                   <div>
                     <Label>Condition</Label>
-                    <p>{condition.operator} {condition.value}</p>
+                    <p>{condition.operator} {condition.value !== null ? String(condition.value) : 'null'}</p>
                   </div>
                 </div>
                 {condition.description && (
@@ -762,7 +811,12 @@ function RuleViewer({
                 <div className="flex items-center justify-between">
                   <Badge variant="outline">{action.type}</Badge>
                   {action.value && (
-                    <span className="text-sm font-medium">{action.value}</span>
+                    <span className="text-sm font-medium">
+                      {typeof action.value === 'object' 
+                        ? JSON.stringify(action.value) 
+                        : String(action.value)
+                      }
+                    </span>
                   )}
                 </div>
                 {action.message && (

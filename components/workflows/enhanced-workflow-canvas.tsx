@@ -5,8 +5,8 @@ import { useRef, useState, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Play, GitBranch, Zap, Square, Trash2, Plus, Database, Settings } from "lucide-react"
-import type { UnifiedWorkflowNode, WorkflowConnection } from "./unified-workflow-builder"
+import { Play, GitBranch, Zap, Square, Trash2, Plus, Database, Settings, CheckCircle, Package, AlertTriangle, Bot, FileCheck } from "lucide-react"
+import type { WorkflowNode as UnifiedWorkflowNode, WorkflowConnection, WorkflowMode } from "@/lib/types/unified-workflow"
 
 // Enhanced component props interface
 interface EnhancedWorkflowCanvasProps {
@@ -21,7 +21,7 @@ interface EnhancedWorkflowCanvasProps {
   onConnectionCreate: (sourceId: string, targetId: string, label?: string) => void
   onConnectionUpdate: (connectionId: string, updates: Partial<WorkflowConnection>) => void
   onConnectionDelete: (connectionId: string) => void
-  mode?: "simple" | "enhanced"
+  mode?: WorkflowMode
 }
 
 // Enhanced drag state interface
@@ -56,6 +56,12 @@ const getNodeIcon = (type: UnifiedWorkflowNode["type"]) => {
     data_source: Database,
     rule_set: Settings,
     decision: GitBranch, // Use same icon as condition
+    validation: CheckCircle,
+    integration: Package,
+    notification: AlertTriangle,
+    ai_decision: Bot,
+    batch_process: Package,
+    audit_log: FileCheck,
   } as const
 
   return iconMap[type]
@@ -73,6 +79,12 @@ const getNodeColor = (type: UnifiedWorkflowNode["type"]) => {
     data_source: "border-blue-500 bg-blue-50 text-blue-700",
     rule_set: "border-orange-500 bg-orange-50 text-orange-700",
     decision: "border-purple-500 bg-purple-50 text-purple-700", // Use same color as condition
+    validation: "border-teal-500 bg-teal-50 text-teal-700",
+    integration: "border-cyan-500 bg-cyan-50 text-cyan-700",
+    notification: "border-pink-500 bg-pink-50 text-pink-700",
+    ai_decision: "border-violet-500 bg-violet-50 text-violet-700",
+    batch_process: "border-slate-500 bg-slate-50 text-slate-700",
+    audit_log: "border-emerald-500 bg-emerald-50 text-emerald-700",
   } as const
 
   return colorMap[type]

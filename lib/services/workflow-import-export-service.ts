@@ -2,6 +2,29 @@ import { Workflow, WorkflowNode, WorkflowConnection } from './workflow-execution
 import { RuleSet, Rule } from '@/lib/engines/rule-engine'
 import { TestSuite, TestCase } from '@/lib/utils/workflow-testing'
 
+// Enhanced service interfaces to replace 'any' types
+export interface WorkflowService {
+  getWorkflow(id: string): Workflow | undefined
+  saveWorkflow(workflow: Workflow): void
+  getAllWorkflows(): Workflow[]
+  deleteWorkflow(id: string): boolean
+  validateWorkflow(workflow: Workflow): Promise<{ isValid: boolean; errors: string[] }>
+}
+
+export interface TestingService {
+  getTestSuite(id: string): TestSuite | undefined
+  saveTestSuite(testSuite: TestSuite): void
+  getAllTestSuites(): TestSuite[]
+  deleteTestSuite(id: string): boolean
+  getTestSuitesForWorkflow(workflowId: string): TestSuite[]
+}
+
+export interface EncryptionConfig {
+  enabled: boolean
+  algorithm: 'AES-256-GCM' | 'AES-192-GCM' | 'AES-128-GCM'
+  key?: string
+}
+
 export interface WorkflowExportData {
   workflow: Workflow
   testSuites?: TestSuite[]
@@ -35,11 +58,7 @@ export interface ExportOptions {
   includeExecutionHistory: boolean
   format: 'json' | 'yaml'
   compression: boolean
-  encryption?: {
-    enabled: boolean
-    algorithm: string
-    key?: string
-  }
+  encryption?: EncryptionConfig
 }
 
 export interface ImportOptions {
@@ -49,16 +68,33 @@ export interface ImportOptions {
   conflictResolution: 'skip' | 'overwrite' | 'prompt'
 }
 
+export interface ValidationResult {
+  isValid: boolean
+  errors: string[]
+  warnings: string[]
+}
+
+export interface WorkflowImportData {
+  workflow: Workflow
+  testSuites?: TestSuite[]
+  metadata?: {
+    exportedAt: string
+    exportedBy: string
+    version: string
+    format: string
+    checksum: string
+  }
+}
+
 export class WorkflowImportExportService {
   private readonly EXPORT_VERSION = '1.0.0'
   private readonly SUPPORTED_FORMATS = ['json', 'yaml']
 
-  // Export functionality
   async exportWorkflow(
     workflowId: string, 
     options: ExportOptions,
-    workflowService: any,
-    testingService?: any
+    workflowService: WorkflowService,
+    testingService?: TestingService
   ): Promise<string> {
     try {
       const workflow = workflowService.getWorkflow(workflowId)
@@ -84,12 +120,12 @@ export class WorkflowImportExportService {
       }
 
       // Generate checksum
-      exportData.metadata.checksum = this.generateChecksum(exportData)
+      exportData.metadata.checksum = this.generateChecksum(exportData as unknown as Record<string, unknown>)
 
       // Convert to requested format
       let exportString: string
       if (options.format === 'yaml') {
-        exportString = this.convertToYaml(exportData)
+        exportString = this.convertToYaml(exportData as unknown as Record<string, unknown>)
       } else {
         exportString = JSON.stringify(exportData, null, 2)
       }
@@ -114,8 +150,8 @@ export class WorkflowImportExportService {
   async exportMultipleWorkflows(
     workflowIds: string[],
     options: ExportOptions,
-    workflowService: any,
-    testingService?: any
+    workflowService: WorkflowService,
+    testingService?: TestingService
   ): Promise<string> {
     const exportData = {
       workflows: [] as Workflow[],
@@ -163,8 +199,8 @@ export class WorkflowImportExportService {
   async importWorkflow(
     importData: string,
     options: ImportOptions,
-    workflowService: any,
-    testingService?: any
+    workflowService: WorkflowService,
+    testingService?: TestingService
   ): Promise<ImportResult> {
     const result: ImportResult = {
       success: false,
@@ -258,7 +294,7 @@ export class WorkflowImportExportService {
   }
 
   // Validation methods
-  private validateImportData(data: any): { isValid: boolean; errors: string[]; warnings: string[] } {
+  private validateImportData(data: WorkflowImportData): ValidationResult {
     const errors: string[] = []
     const warnings: string[] = []
 
@@ -274,7 +310,7 @@ export class WorkflowImportExportService {
 
       // Verify checksum if present
       if (data.metadata.checksum) {
-        const calculatedChecksum = this.generateChecksum(data)
+        const calculatedChecksum = this.generateChecksum(data as unknown as Record<string, unknown>)
         if (calculatedChecksum !== data.metadata.checksum) {
           warnings.push('Checksum mismatch - data may be corrupted')
         }
@@ -286,12 +322,6 @@ export class WorkflowImportExportService {
       const workflowValidation = this.validateWorkflowStructure(data.workflow)
       errors.push(...workflowValidation.errors)
       warnings.push(...workflowValidation.warnings)
-    } else if (data.workflows) {
-      for (const workflow of data.workflows) {
-        const workflowValidation = this.validateWorkflowStructure(workflow)
-        errors.push(...workflowValidation.errors)
-        warnings.push(...workflowValidation.warnings)
-      }
     } else {
       errors.push('No workflow data found in import file')
     }
@@ -299,7 +329,7 @@ export class WorkflowImportExportService {
     return { isValid: errors.length === 0, errors, warnings }
   }
 
-  private validateWorkflowStructure(workflow: any): { errors: string[]; warnings: string[] } {
+  private validateWorkflowStructure(workflow: Workflow): { errors: string[]; warnings: string[] } {
     const errors: string[] = []
     const warnings: string[] = []
 
@@ -360,9 +390,9 @@ export class WorkflowImportExportService {
   }
 
   private async detectConflicts(
-    data: any,
-    workflowService: any,
-    testingService?: any
+    data: WorkflowImportData,
+    workflowService: WorkflowService,
+    testingService?: TestingService
   ): Promise<ImportConflict[]> {
     const conflicts: ImportConflict[] = []
 
@@ -376,18 +406,6 @@ export class WorkflowImportExportService {
           resourceName: data.workflow.name,
           action: 'skip'
         })
-      }
-    } else if (data.workflows) {
-      for (const workflow of data.workflows) {
-        const existing = workflowService.getWorkflow(workflow.id)
-        if (existing) {
-          conflicts.push({
-            type: 'workflow_exists',
-            resourceId: workflow.id,
-            resourceName: workflow.name,
-            action: 'skip'
-          })
-        }
       }
     }
 
@@ -410,10 +428,10 @@ export class WorkflowImportExportService {
   }
 
   private async importSingleWorkflow(
-    workflowData: any,
+    workflowData: Workflow,
     conflicts: ImportConflict[],
     options: ImportOptions,
-    workflowService: any
+    workflowService: WorkflowService
   ): Promise<Workflow> {
     const conflict = conflicts.find(c => c.resourceId === workflowData.id)
     
@@ -441,10 +459,10 @@ export class WorkflowImportExportService {
   }
 
   private async importTestSuite(
-    testSuiteData: any,
+    testSuiteData: TestSuite,
     conflicts: ImportConflict[],
     options: ImportOptions,
-    testingService: any
+    testingService: TestingService
   ): Promise<void> {
     const conflict = conflicts.find(c => c.resourceId === testSuiteData.id)
     
@@ -486,7 +504,7 @@ export class WorkflowImportExportService {
     return sanitized
   }
 
-  private generateChecksum(data: any): string {
+  private generateChecksum(data: Record<string, unknown>): string {
     // Simple checksum implementation - in production, use a proper hash function
     const str = JSON.stringify(data, Object.keys(data).sort())
     let hash = 0
@@ -498,7 +516,7 @@ export class WorkflowImportExportService {
     return Math.abs(hash).toString(16)
   }
 
-  private convertToYaml(data: any): string {
+  private convertToYaml(data: Record<string, unknown>): string {
     // Simplified YAML conversion - in production, use a proper YAML library
     return JSON.stringify(data, null, 2)
       .replace(/"/g, '')
@@ -507,7 +525,7 @@ export class WorkflowImportExportService {
       .replace(/^\s*}/gm, '')
   }
 
-  private parseYaml(yamlString: string): any {
+  private parseYaml(yamlString: string): WorkflowImportData {
     // Simplified YAML parsing - in production, use a proper YAML library
     try {
       return JSON.parse(yamlString)
@@ -530,7 +548,7 @@ export class WorkflowImportExportService {
     }
   }
 
-  private async encryptData(data: string, encryption: any): Promise<string> {
+  private async encryptData(data: string, encryption: EncryptionConfig): Promise<string> {
     // Placeholder for encryption - in production, use proper encryption
     return btoa(data) // Simple base64 encoding as placeholder
   }
@@ -559,7 +577,7 @@ export class WorkflowImportExportService {
     return !data.trim().startsWith('{') && data.includes(':')
   }
 
-  private async createBackup(workflowService: any): Promise<void> {
+  private async createBackup(workflowService: WorkflowService): Promise<void> {
     // Create backup of existing workflows
     const allWorkflows = workflowService.getAllWorkflows()
     const backupData = {

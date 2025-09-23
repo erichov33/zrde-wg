@@ -10,6 +10,26 @@ import { z } from 'zod'
 // ============================================================================
 
 /**
+ * Workflow template interface for saving and loading workflow configurations
+ */
+export interface WorkflowTemplate {
+  id: string
+  name: string
+  description: string
+  category: string
+  tags: string[]
+  nodes: BaseWorkflowNode[]
+  connections: WorkflowConnection[]
+  metadata: {
+    author: string
+    version: string
+    createdAt: Date
+    updatedAt: Date
+    usageCount?: number
+  }
+}
+
+/**
  * Base workflow node interface
  */
 export interface BaseWorkflowNode {
@@ -32,6 +52,21 @@ export type WorkflowNodeType =
   | 'rule_set'
   | 'decision'
   | 'validation'
+  | 'task'
+  | 'loop'
+  | 'delay'
+  | 'error'
+  | 'data'
+  | 'transform'
+  | 'api'
+  | 'email'
+  | 'webhook'
+  | 'file'
+  | 'integration'
+  | 'notification'
+  | 'ai_decision'
+  | 'batch_process'
+  | 'audit_log'
 
 /**
  * Position coordinates for nodes
@@ -75,6 +110,7 @@ export interface WorkflowConnection {
   target: string
   label?: string
   condition?: string
+  conditions?: Record<string, string> | string
   metadata?: ConnectionMetadata
 }
 
@@ -835,6 +871,41 @@ export interface FieldValidation {
   nullable: boolean
 }
 
+/**
+ * Workflow validation result
+ */
+export interface WorkflowValidationResult {
+  isValid: boolean
+  errors: WorkflowValidationError[]
+  warnings: WorkflowValidationWarning[]
+  nodeId?: string
+  connectionId?: string
+}
+
+/**
+ * Workflow validation error
+ */
+export interface WorkflowValidationError {
+  code: string
+  message: string
+  nodeId?: string
+  connectionId?: string
+  severity: "error" | "warning"
+  field?: string
+}
+
+/**
+ * Workflow validation warning
+ */
+export interface WorkflowValidationWarning {
+  code: string
+  message: string
+  nodeId?: string
+  connectionId?: string
+  suggestion?: string
+  field?: string
+}
+
 // ============================================================================
 // Zod Schemas for Runtime Validation
 // ============================================================================
@@ -852,7 +923,7 @@ export const PositionSchema = z.object({
  */
 export const WorkflowNodeSchema = z.object({
   id: z.string(),
-  type: z.enum(['start', 'condition', 'action', 'end', 'data_source', 'rule_set', 'decision', 'validation']),
+  type: z.enum(['start', 'condition', 'action', 'end', 'data_source', 'rule_set', 'decision', 'validation', 'task', 'loop', 'delay', 'error', 'data', 'transform', 'api', 'email', 'webhook', 'file', 'integration', 'notification', 'ai_decision', 'batch_process', 'audit_log']),
   position: PositionSchema,
   data: z.object({
     label: z.string(),

@@ -1,34 +1,18 @@
-import { RuleEngine, RuleSet, RuleExecutionContext, RuleSetExecutionResult } from "@/lib/engines/rule-engine"
+import { RuleEngine, RuleSet, Rule, RuleExecutionContext, RuleSetExecutionResult, ApplicationData } from "@/lib/engines/rule-engine"
 import { DecisionRequest, DecisionResponse } from "./decision-service"
+import { 
+  EnhancedWorkflowDefinition, 
+  DataSourceConfig,
+  DataRequirements,
+  createDataRequirements 
+} from "@/lib/types/workflow-definitions"
 
-export interface WorkflowDefinition {
-  id: string
-  name: string
-  description: string
-  version: string
-  ruleSet: RuleSet
-  dataRequirements: {
-    required: string[]
-    optional: string[]
-    external: string[]
-  }
-  metadata: {
-    createdAt: string
-    updatedAt: string
-    createdBy: string
-    status: "draft" | "active" | "deprecated"
-  }
-}
+// Use the unified type instead of local definition
+export type WorkflowDefinition = EnhancedWorkflowDefinition
 
-export interface ExternalDataSource {
-  id: string
-  name: string
-  type: "credit_bureau" | "kyc_provider" | "fraud_service" | "income_verification" | "custom"
-  endpoint: string
-  apiKey?: string
-  timeout: number
-  retries: number
-  enabled: boolean
+// Keep the existing ExternalDataSource interface but align with DataSourceConfig
+export interface ExternalDataSource extends DataSourceConfig {
+  // This interface now extends the unified DataSourceConfig
 }
 
 export interface SimulationRequest {
@@ -109,7 +93,8 @@ export class EnhancedDecisionService {
         externalData[sourceId] = data
       } catch (error) {
         console.error(`Failed to fetch data from ${sourceId}:`, error)
-        externalData[sourceId] = { error: error.message }
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        externalData[sourceId] = { error: errorMessage }
       }
     }
     
@@ -216,9 +201,34 @@ export class EnhancedDecisionService {
     const externalDataSources = workflow.dataRequirements.external
     const externalData = await this.fetchExternalData(externalDataSources, request.applicationData)
     
+    // Transform application data to match ApplicationData interface
+    const transformedApplicationData: ApplicationData = {
+      personalInfo: {
+        firstName: request.applicationData.personalInfo.firstName,
+        lastName: request.applicationData.personalInfo.lastName,
+        email: request.applicationData.personalInfo.email,
+        phone: request.applicationData.personalInfo.phone,
+        dateOfBirth: request.applicationData.personalInfo.dateOfBirth,
+        ssn: request.applicationData.personalInfo.nationalId
+      },
+      financialInfo: {
+        annualIncome: (request.applicationData.financialInfo.monthlyIncome || 0) * 12,
+        employmentStatus: request.applicationData.financialInfo.employmentStatus || 'unknown',
+        monthlyDebt: 0, // Default value, could be calculated from other data
+        requestedAmount: request.applicationData.financialInfo.requestedAmount || 0
+      },
+      address: {
+        street: request.applicationData.location.address || '',
+        city: request.applicationData.location.city || '',
+        state: '', // Not provided in DecisionRequest, using default
+        zipCode: '', // Not provided in DecisionRequest, using default
+        country: request.applicationData.location.country
+      }
+    }
+    
     // Prepare execution context
     const context: RuleExecutionContext = {
-      applicationData: request.applicationData,
+      applicationData: transformedApplicationData,
       externalData,
       userContext: {
         userId: request.applicantId,
@@ -321,7 +331,7 @@ export class EnhancedDecisionService {
     
     // Disable specified rules
     for (const ruleId of overrides.disabledRules) {
-      const rule = modifiedRuleSet.rules.find(r => r.id === ruleId)
+      const rule = modifiedRuleSet.rules.find((r: Rule) => r.id === ruleId)
       if (rule) {
         rule.enabled = false
       }
@@ -329,7 +339,7 @@ export class EnhancedDecisionService {
     
     // Apply rule modifications
     for (const modification of overrides.modifiedRules) {
-      const rule = modifiedRuleSet.rules.find(r => r.id === modification.ruleId)
+      const rule = modifiedRuleSet.rules.find((r: Rule) => r.id === modification.ruleId)
       if (rule) {
         Object.assign(rule, modification.modifications)
       }

@@ -1,6 +1,6 @@
 "use client"
 
-import { ConnectedWorkflowBuilder } from "@/components/workflows/connected-workflow-builder"
+import { UnifiedWorkflowSystem } from "@/components/workflows/unified-workflow-system"
 
 // Sample workflow nodes for demonstration
 const sampleNodes = [
@@ -69,7 +69,7 @@ const sampleNodes = [
   },
 ]
 
-// Sample workflow connections
+// Sample connections between nodes
 const sampleConnections = [
   {
     id: "conn_1",
@@ -106,20 +106,22 @@ const sampleConnections = [
 ]
 
 export default function WorkflowBuilderPage() {
+  const handleSave = (workflow: any) => {
+    console.log("Saving workflow:", workflow)
+    // Implement save logic here
+  }
+
+  const handleExecute = (workflow: any) => {
+    console.log("Executing workflow:", workflow)
+    // Implement execution logic here
+  }
+
   return (
-    <div className="h-[calc(100vh-8rem)]">
-      <ConnectedWorkflowBuilder 
+    <div className="h-screen">
+      <UnifiedWorkflowSystem
         mode="enhanced"
-        initialNodes={sampleNodes}
-        initialConnections={sampleConnections}
-        onSave={(workflow) => {
-          console.log('Saving workflow:', workflow)
-          // TODO: Implement actual save functionality
-        }}
-        onExecute={(workflow) => {
-          console.log('Executing workflow:', workflow)
-          // TODO: Implement actual execution functionality
-        }}
+        onSave={handleSave}
+        onExecute={handleExecute}
       />
     </div>
   )

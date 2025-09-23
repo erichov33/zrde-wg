@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useCallback, useMemo } from "react"
+import React, { useState, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { WorkflowCanvas } from "./workflow-canvas"
+import { EnhancedWorkflowCanvas } from "./enhanced-workflow-canvas"
 import { RuleConfigurationPanel } from "./rule-configuration-panel"
 import { SimulationPanel } from "./simulation-panel"
 import { DataSourcePanel } from "./data-source-panel"
@@ -17,36 +17,25 @@ import { BusinessLogicPanel } from "./business-logic-panel"
 import { WorkflowConfigurationPanel } from "./workflow-configuration-panel"
 import { Save, Play, ArrowLeft, Settings, TestTube, Database, GitBranch, Download, Upload, Zap, Square } from "lucide-react"
 import Link from "next/link"
-import { WorkflowDefinition } from "@/lib/services/enhanced-decision-service"
-import { RuleSet, Rule } from "@/lib/engines/rule-engine"
 import { WorkflowBusinessLogicService } from "@/lib/services/workflow-business-logic-service"
 import { WorkflowConfigurationManager } from "@/lib/config/workflow-config"
 
-// Unified node interface that supports both simple and enhanced workflows
-export interface UnifiedWorkflowNode {
-  id: string
-  type: "start" | "condition" | "action" | "end" | "data_source" | "rule_set" | "decision"
-  position: { x: number; y: number }
-  data: {
-    label: string
-    config?: any
-    rules?: Rule[]
-    dataSource?: string
-    conditions?: any[]
-    businessLogic?: string // Reference to business logic function
-  }
-}
+// Import unified types
+import type { 
+  WorkflowNode, 
+  WorkflowConnection, 
+  WorkflowDefinition,
+  WorkflowMode
+} from "@/lib/types/unified-workflow"
+import { createDefaultWorkflow } from "@/lib/types/unified-workflow"
+import { Rule } from "@/lib/engines/rule-engine"
 
-export interface WorkflowConnection {
-  id: string
-  source: string
-  target: string
-  label?: string
-  condition?: string
-}
+// Type aliases for backward compatibility
+export type UnifiedWorkflowNode = WorkflowNode
+export type UnifiedWorkflowDefinition = WorkflowDefinition
 
 export interface WorkflowBuilderProps {
-  mode?: "simple" | "enhanced"
+  mode?: WorkflowMode
   initialWorkflow?: Partial<WorkflowDefinition>
   onSave?: (workflow: WorkflowDefinition) => void
   onTest?: (workflow: WorkflowDefinition) => void
@@ -72,40 +61,24 @@ export type WorkflowTemplate = {
 /**
  * Default workflow configurations
  */
-const DEFAULT_WORKFLOWS = {
-  simple: {
-    name: "Simple Workflow",
-    description: "Basic workflow for simple decision processes",
-    nodes: [
-      {
-        id: "start-1",
-        type: "start" as const,
-        position: { x: 100, y: 100 },
-        data: { label: "Application Received" },
+// Create default workflows using the unified utility
+const getDefaultWorkflow = (mode: WorkflowMode): WorkflowDefinition => {
+  switch (mode) {
+    case "simple":
+      return createDefaultWorkflow("Simple Workflow", "simple")
+    case "enhanced":
+      const enhanced = createDefaultWorkflow("Enhanced Decision Workflow", "enhanced")
+      enhanced.description = "Advanced workflow with business rules and data sources"
+      enhanced.dataRequirements = {
+        required: ["creditScore", "income", "debtToIncomeRatio"],
+        optional: ["employmentHistory", "bankingHistory"],
+        external: ["credit_bureau", "income_verification"]
       }
-    ],
-    connections: [],
-  },
-  enhanced: {
-    name: "Enhanced Decision Workflow",
-    description: "Advanced workflow with business rules and data sources",
-    version: "1.0.0",
-    dataRequirements: {
-      required: ["creditScore", "income", "debtToIncomeRatio"],
-      optional: ["employmentHistory", "bankingHistory"],
-      external: ["credit_bureau", "income_verification"]
-    },
-    nodes: [
-      {
-        id: "start-1",
-        type: "start" as const,
-        position: { x: 100, y: 100 },
-        data: { label: "Application Received" },
-      }
-    ],
-    connections: [],
+      return enhanced
+    default:
+      return createDefaultWorkflow("Basic Workflow", "simple")
   }
-} as const
+}
 
 /**
  * Unified Workflow Builder Component
@@ -114,25 +87,28 @@ const DEFAULT_WORKFLOWS = {
  * - Simple mode: Basic drag-and-drop workflow creation
  * - Enhanced mode: Advanced features with business rules, data sources, and testing
  */
-export function UnifiedWorkflowBuilder({ 
+export const UnifiedWorkflowBuilder = React.memo(function UnifiedWorkflowBuilder({ 
   mode = "enhanced", 
   initialWorkflow,
   onSave,
   onTest 
 }: WorkflowBuilderProps) {
   // Core workflow state
+  const defaultWorkflow = useMemo(() => getDefaultWorkflow(mode), [mode])
+  
   const [workflowName, setWorkflowName] = useState(
-    initialWorkflow?.name || DEFAULT_WORKFLOWS[mode].name
+    initialWorkflow?.name || defaultWorkflow.name
   )
   const [workflowDescription, setWorkflowDescription] = useState(
-    initialWorkflow?.description || DEFAULT_WORKFLOWS[mode].description
+    initialWorkflow?.description || defaultWorkflow.description
   )
   const [selectedNode, setSelectedNode] = useState<UnifiedWorkflowNode | null>(null)
+  const [selectedConnection, setSelectedConnection] = useState<WorkflowConnection | null>(null)
   const [nodes, setNodes] = useState<UnifiedWorkflowNode[]>(
-    initialWorkflow?.nodes || DEFAULT_WORKFLOWS[mode].nodes
+    (initialWorkflow as any)?.nodes || defaultWorkflow.nodes
   )
   const [connections, setConnections] = useState<WorkflowConnection[]>(
-    initialWorkflow?.connections || DEFAULT_WORKFLOWS[mode].connections
+    (initialWorkflow as any)?.connections || defaultWorkflow.connections
   )
   const [selectedConfiguration, setSelectedConfiguration] = useState('loan_approval_config')
 
@@ -162,7 +138,7 @@ export function UnifiedWorkflowBuilder({
     setNodes(prev => [...prev, newNode])
   }, [generateId])
 
-  const handleNodeUpdate = useCallback((nodeId: string, updates: Partial<UnifiedWorkflowNode>) => {
+  const handleNodeUpdate = useCallback((nodeId: string, updates: Partial<WorkflowNode>) => {
     setNodes(prev => prev.map(node => 
       node.id === nodeId ? { ...node, ...updates } : node
     ))
@@ -186,6 +162,45 @@ export function UnifiedWorkflowBuilder({
     }
     setConnections(prev => [...prev, newConnection])
   }, [generateId])
+
+  const handleConnectionCreate = useCallback((connection: Omit<WorkflowConnection, 'id'>) => {
+    const newConnection: WorkflowConnection = {
+      ...connection,
+      id: generateId(),
+    }
+    setConnections(prev => [...prev, newConnection])
+  }, [generateId])
+
+  const handleConnectionUpdate = useCallback((connectionId: string, updates: Partial<WorkflowConnection>) => {
+    setConnections(prev => prev.map(conn => 
+      conn.id === connectionId ? { ...conn, ...updates } : conn
+    ))
+  }, [])
+
+  const handleConnectionDelete = useCallback((connectionId: string) => {
+    setConnections(prev => prev.filter(conn => conn.id !== connectionId))
+    if (selectedConnection?.id === connectionId) {
+      setSelectedConnection(null)
+    }
+  }, [selectedConnection])
+
+  // Wrapper function to match EnhancedWorkflowCanvas expected signature
+  const handleConnectionCreateWrapper = useCallback((sourceId: string, targetId: string, label?: string) => {
+    const connection: Omit<WorkflowConnection, 'id'> = {
+      source: sourceId,
+      target: targetId,
+      type: "default",
+      label: label || "",
+      condition: "",
+      conditions: {},
+      metadata: {
+        createdAt: new Date().toISOString(),
+        priority: 1,
+        description: ""
+      }
+    }
+    handleConnectionCreate(connection)
+  }, [handleConnectionCreate])
 
   // Template management
   const handleTemplateLoad = useCallback((templateId: string) => {
@@ -223,65 +238,107 @@ export function UnifiedWorkflowBuilder({
   const handleSave = useCallback(() => {
     const validation = WorkflowBusinessLogicService.validateWorkflow(nodes, connections)
     if (!validation.isValid) {
-      console.error('Workflow validation failed:', validation.errors)
+      // Log validation errors for debugging in development
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Workflow validation failed:', validation.errors)
+      }
+      // TODO: Show user-friendly error message in UI
       return
     }
 
-    const workflow: WorkflowDefinition = {
-      id: generateId(),
-      name: workflowName,
-      description: workflowDescription,
-      version: "1.0.0",
-      nodes,
-      connections,
-      dataRequirements: {
-        required: ["creditScore", "income", "debtToIncomeRatio"],
-        optional: ["employmentHistory", "bankingHistory"],
-        external: ["credit_bureau", "income_verification"]
+    try {
+      const workflow: UnifiedWorkflowDefinition = {
+        id: generateId(),
+        name: workflowName,
+        description: workflowDescription,
+        version: "1.0.0",
+        nodes,
+        connections,
+        dataRequirements: {
+          required: ["creditScore", "income", "debtToIncomeRatio"],
+          optional: ["employmentHistory", "bankingHistory"],
+          external: ["credit_bureau", "income_verification"]
+        },
+        metadata: {
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          createdBy: "user"
+        },
+        status: "draft"
       }
+      
+      onSave?.(workflow)
+    } catch (error) {
+      // Handle save error with proper error service
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to save workflow:', error)
+      }
+      // TODO: Integrate with error reporting service
     }
-    
-    onSave?.(workflow)
   }, [nodes, connections, workflowName, workflowDescription, onSave, generateId])
 
   const handleTest = useCallback(() => {
     const validation = WorkflowBusinessLogicService.validateWorkflow(nodes, connections)
     if (!validation.isValid) {
-      console.error('Cannot test invalid workflow:', validation.errors)
+      // Log validation errors for debugging in development
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Cannot test invalid workflow:', validation.errors)
+      }
+      // TODO: Show user-friendly error message in UI
       return
     }
 
-    const workflow: WorkflowDefinition = {
-      id: generateId(),
-      name: workflowName,
-      description: workflowDescription,
-      version: "1.0.0",
-      nodes,
-      connections,
-      dataRequirements: {
-        required: ["creditScore", "income", "debtToIncomeRatio"],
-        optional: ["employmentHistory", "bankingHistory"],
-        external: ["credit_bureau", "income_verification"]
+    try {
+      const workflow: UnifiedWorkflowDefinition = {
+        id: generateId(),
+        name: workflowName,
+        description: workflowDescription,
+        version: "1.0.0",
+        nodes,
+        connections,
+        dataRequirements: {
+          required: ["creditScore", "income", "debtToIncomeRatio"],
+          optional: ["employmentHistory", "bankingHistory"],
+          external: ["credit_bureau", "income_verification"]
+        },
+        metadata: {
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          createdBy: "user"
+        },
+        status: "draft"
       }
+      
+      onTest?.(workflow)
+    } catch (error) {
+      // Handle test error with proper error service
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to test workflow:', error)
+      }
+      // TODO: Integrate with error reporting service
     }
-    
-    onTest?.(workflow)
   }, [nodes, connections, workflowName, workflowDescription, onTest, generateId])
 
   // Current workflow for panels
-  const currentWorkflow = useMemo(() => ({
-    id: generateId(),
+  const currentWorkflow = useMemo((): WorkflowDefinition => ({
+    id: initialWorkflow?.id || generateId(),
     name: workflowName,
     description: workflowDescription,
-    version: "1.0.0",
+    version: initialWorkflow?.version || "1.0.0",
     nodes,
     connections,
-    dataRequirements: {
+    dataRequirements: initialWorkflow?.dataRequirements || {
       required: ["creditScore", "income", "debtToIncomeRatio"],
       optional: ["employmentHistory", "bankingHistory"],
       external: ["credit_bureau", "income_verification"]
-    }
-  }), [workflowName, workflowDescription, nodes, connections, generateId])
+    },
+    metadata: initialWorkflow?.metadata || {
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: "user"
+    },
+    status: initialWorkflow?.status || "draft"
+  }), [workflowName, workflowDescription, nodes, connections, initialWorkflow, generateId])
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -363,27 +420,32 @@ export function UnifiedWorkflowBuilder({
             
             <div className="flex-1 overflow-hidden">
               <TabsContent value="canvas" className="h-full m-0">
-                <WorkflowCanvas
+                <EnhancedWorkflowCanvas
                   nodes={nodes}
                   connections={connections}
-                  onNodeAdd={handleNodeAdd}
+                  selectedNode={selectedNode}
+                  selectedConnection={selectedConnection}
+                  onNodeSelect={setSelectedNode}
+                  onConnectionSelect={setSelectedConnection}
                   onNodeUpdate={handleNodeUpdate}
                   onNodeDelete={handleNodeDelete}
-                  onNodeSelect={setSelectedNode}
-                  onConnectionAdd={handleConnectionAdd}
-                  selectedNode={selectedNode}
+                  onConnectionCreate={handleConnectionCreateWrapper}
+                  onConnectionUpdate={handleConnectionUpdate}
+                  onConnectionDelete={handleConnectionDelete}
+                  mode={mode}
                 />
               </TabsContent>
               
               <TabsContent value="rules" className="h-full m-0">
                 <RuleConfigurationPanel
-                  workflow={currentWorkflow}
-                  selectedNode={selectedNode}
-                  onWorkflowUpdate={(updates) => {
-                    if (updates.nodes) setNodes(updates.nodes)
-                    if (updates.connections) setConnections(updates.connections)
-                  }}
-                />
+              nodes={nodes}
+              onNodeUpdate={handleNodeUpdate}
+              workflow={currentWorkflow}
+              onWorkflowUpdate={(updates: Partial<WorkflowDefinition>) => {
+                if (updates.nodes) setNodes(updates.nodes)
+                if (updates.connections) setConnections(updates.connections)
+              }}
+            />
               </TabsContent>
               
               <TabsContent value="simulation" className="h-full m-0">
@@ -395,18 +457,23 @@ export function UnifiedWorkflowBuilder({
               
               <TabsContent value="data" className="h-full m-0">
                 <DataSourcePanel
-                  nodes={nodes}
-                  onNodeUpdate={handleNodeUpdate}
+                  workflow={currentWorkflow}
+                  onWorkflowUpdate={(updates) => {
+                    if (updates.nodes) setNodes(updates.nodes)
+                    if (updates.connections) setConnections(updates.connections)
+                  }}
                 />
               </TabsContent>
               
               {mode === "enhanced" && (
                 <TabsContent value="version" className="h-full m-0">
                   <VersionControlPanel
-                    workflow={currentWorkflow}
-                    onWorkflowUpdate={(updates) => {
-                      if (updates.nodes) setNodes(updates.nodes)
-                      if (updates.connections) setConnections(updates.connections)
+                    workflowId={currentWorkflow.id || 'new-workflow'}
+                    onVersionChange={(version) => {
+                      // Handle version change if needed
+                    }}
+                    onCreateVersion={(versionData) => {
+                      // Handle version creation if needed
                     }}
                   />
                 </TabsContent>
@@ -417,4 +484,6 @@ export function UnifiedWorkflowBuilder({
       </div>
     </div>
   )
-}
+})
+
+UnifiedWorkflowBuilder.displayName = "UnifiedWorkflowBuilder"

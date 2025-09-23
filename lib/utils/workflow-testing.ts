@@ -212,7 +212,7 @@ export class WorkflowTestingUtility {
     return newTestCase
   }
 
-  updateTestCase(suiteId: string, testCaseId: string, updates: Partial<TestCase>): TestCase {
+  updateTestCase(suiteId: string, testCaseId: string, updates: Partial<Omit<TestCase, 'id' | 'createdAt'>>): TestCase {
     const suite = this.testSuites.get(suiteId)
     if (!suite) {
       throw new Error(`Test suite not found: ${suiteId}`)
@@ -223,7 +223,20 @@ export class WorkflowTestingUtility {
       throw new Error(`Test case not found: ${testCaseId}`)
     }
 
-    suite.testCases[testCaseIndex] = { ...suite.testCases[testCaseIndex], ...updates }
+    const existingTestCase = suite.testCases[testCaseIndex]
+    
+    // Filter out undefined values from updates to prevent overwriting existing values with undefined
+    const filteredUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([_, value]) => value !== undefined)
+    ) as Partial<Omit<TestCase, 'id' | 'createdAt'>>
+    
+    // Create updated test case with proper typing
+    const updatedTestCase = {
+      ...existingTestCase,
+      ...filteredUpdates
+    } as TestCase
+    
+    suite.testCases[testCaseIndex] = updatedTestCase
     suite.updatedAt = new Date()
     
     return suite.testCases[testCaseIndex]
@@ -455,6 +468,10 @@ export class WorkflowTestingUtility {
       throw new Error(`Test suite not found: ${suiteId}`)
     }
 
+    if (suite.testCases.length === 0) {
+      throw new Error(`Test suite ${suiteId} has no test cases`)
+    }
+
     const startTime = Date.now()
     const results: TestResult[] = []
     const executionTimes: number[] = []
@@ -465,7 +482,8 @@ export class WorkflowTestingUtility {
       const batch = []
       
       for (let j = 0; j < concurrency && (i + j) < iterations; j++) {
-        const testCase = suite.testCases[Math.floor(Math.random() * suite.testCases.length)]
+        const randomIndex = Math.floor(Math.random() * suite.testCases.length)
+        const testCase: TestCase = suite.testCases[randomIndex]!
         batch.push(this.runTestCase(testCase, workflowExecutionService))
       }
 

@@ -424,7 +424,10 @@ export class AuditLoggingService {
       if (!userEventCounts[event.userId]) {
         userEventCounts[event.userId] = { email: event.userEmail, count: 0 }
       }
-      userEventCounts[event.userId].count++
+      const userCount = userEventCounts[event.userId]
+      if (userCount) {
+        userCount.count++
+      }
     })
 
     const topUsers = Object.entries(userEventCounts)

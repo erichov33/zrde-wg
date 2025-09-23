@@ -120,7 +120,7 @@ export function ApplicationList({ filters, sortBy, sortOrder }: ApplicationListP
 
   // Filter and sort applications
   const filteredAndSortedApplications = useMemo(() => {
-    let filtered = applications.filter(app => {
+    const filtered = applications.filter(app => {
       // Search filter
       if (filters.search) {
         const searchTerm = filters.search.toLowerCase()

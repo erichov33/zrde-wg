@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Trash2, Edit3, ArrowRight, GitBranch } from "lucide-react"
-import type { WorkflowConnection, UnifiedWorkflowNode } from "./unified-workflow-builder"
+import type { WorkflowConnection, WorkflowNode as UnifiedWorkflowNode } from "@/lib/types/unified-workflow"
 
 interface ConnectionPropertiesPanelProps {
   connection: WorkflowConnection | null
