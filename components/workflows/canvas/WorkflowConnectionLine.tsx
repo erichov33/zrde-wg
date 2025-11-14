@@ -220,3 +220,5 @@ export function WorkflowConnectionLine({
     </g>
   )
 }
+
+export const MemoWorkflowConnectionLine = React.memo(WorkflowConnectionLine)

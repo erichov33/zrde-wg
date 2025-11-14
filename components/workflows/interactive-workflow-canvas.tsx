@@ -432,7 +432,7 @@ export function InteractiveWorkflowCanvas({
             fill={colors.text}
             style={{ fontSize: `${14 / viewState.zoom}px` }}
           >
-            {node.data.label}
+            {node.data?.label || node.type}
           </text>
           
           <text

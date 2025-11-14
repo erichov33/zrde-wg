@@ -25,9 +25,9 @@ import {
   ValidationError,
   NodeType,
   WorkflowMode
-} from "@/lib/types/unified-workflow"
-import { BusinessRule } from "@/lib/types"
-import { Rule } from "@/lib/engines/rule-engine"
+} from "../types/unified-workflow"
+import { BusinessRule } from "../types"
+import { Rule } from "../engines/rule-engine"
 
 export interface WorkflowExecutionContext {
   data: Record<string, any>
@@ -54,9 +54,57 @@ export class UnifiedWorkflowService implements IWorkflowService {
   private readonly apiClient: any // Replace with your actual API client
   private readonly cache = new Map<string, WorkflowConfig>()
   private readonly executionHistory = new Map<string, WorkflowExecutionResult[]>()
+  private readonly listCache = new Map<string, { ts: number; data: WorkflowConfig[] }>()
+  private readonly inFlightLists = new Map<string, Promise<WorkflowConfig[]>>()
+  private readonly listCacheTTLms = 60000
 
   constructor(apiClient?: any) {
-    this.apiClient = apiClient
+    this.apiClient = apiClient || this.createMockApiClient()
+  }
+
+  private createMockApiClient() {
+    const mockStorage = new Map<string, any>()
+    
+    return {
+      get: async (url: string) => {
+        // Handle listing all workflows
+        if (url === "/workflows") {
+          return Array.from(mockStorage.values())
+        }
+        
+        // Handle getting individual workflow by ID
+        const id = url.split('/').pop()
+        if (!id) {
+          throw new Error('Invalid URL: no ID found')
+        }
+        if (mockStorage.has(id)) {
+          return mockStorage.get(id)
+        }
+        throw new Error(`Workflow ${id} not found`)
+      },
+      post: async (url: string, data: any) => {
+        const id = data.id || `workflow-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        const savedData = { ...data, id }
+        mockStorage.set(id, savedData)
+        return savedData
+      },
+      put: async (url: string, data: any) => {
+        const id = data.id
+        if (!id) {
+          throw new Error('Workflow ID is required for update')
+        }
+        mockStorage.set(id, data)
+        return data
+      },
+      delete: async (url: string) => {
+        const id = url.split('/').pop()
+        if (!id) {
+          throw new Error('Invalid URL: no ID found')
+        }
+        mockStorage.delete(id)
+        return { success: true }
+      }
+    }
   }
 
   // ==================== Core CRUD Operations ====================
@@ -122,18 +170,28 @@ export class UnifiedWorkflowService implements IWorkflowService {
   }
 
   async listWorkflows(filters?: { mode?: WorkflowMode; tags?: string[]; createdBy?: string }): Promise<WorkflowConfig[]> {
-    try {
-      const workflows = await this.apiClient.get("/workflows", { params: filters })
-      
-      // Update cache with fetched workflows
-      workflows.forEach((workflow: WorkflowConfig) => {
-        this.cache.set(workflow.id, workflow)
-      })
-      
-      return workflows
-    } catch (error) {
-      throw new Error(`Failed to list workflows: ${error}`)
+    const key = JSON.stringify(filters || {})
+    const now = Date.now()
+    const cached = this.listCache.get(key)
+    if (cached && now - cached.ts < this.listCacheTTLms) {
+      return cached.data
     }
+    const inflight = this.inFlightLists.get(key)
+    if (inflight) {
+      return inflight
+    }
+    const p = (async () => {
+      try {
+        const workflows = await this.apiClient.get("/workflows", { params: filters })
+        workflows.forEach((wf: WorkflowConfig) => this.cache.set(wf.id, wf))
+        this.listCache.set(key, { ts: Date.now(), data: workflows })
+        return workflows
+      } finally {
+        this.inFlightLists.delete(key)
+      }
+    })()
+    this.inFlightLists.set(key, p)
+    return p
   }
 
   async saveWorkflow(workflow: WorkflowDefinition): Promise<WorkflowConfig> {

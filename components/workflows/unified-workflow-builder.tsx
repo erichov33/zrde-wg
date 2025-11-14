@@ -19,6 +19,9 @@ import { Save, Play, ArrowLeft, Settings, TestTube, Database, GitBranch, Downloa
 import Link from "next/link"
 import { WorkflowBusinessLogicService } from "@/lib/services/workflow-business-logic-service"
 import { WorkflowConfigurationManager } from "@/lib/config/workflow-config"
+import { WorkflowExecutionEngine } from "@/lib/engines/workflow-execution-engine"
+import { NodeExecutorFactory } from "@/lib/engines/node-executor-factory"
+import { AsyncOperationRegistry } from "@/lib/engines/async-operation-registry"
 
 // Import unified types
 import type { 
@@ -54,8 +57,8 @@ export type WorkflowTemplate = {
   name: string
   description: string
   category: string
-  nodes: any[]
-  connections: any[]
+  nodes: UnifiedWorkflowNode[]
+  connections: WorkflowConnection[]
 }
 
 /**
@@ -105,10 +108,10 @@ export const UnifiedWorkflowBuilder = React.memo(function UnifiedWorkflowBuilder
   const [selectedNode, setSelectedNode] = useState<UnifiedWorkflowNode | null>(null)
   const [selectedConnection, setSelectedConnection] = useState<WorkflowConnection | null>(null)
   const [nodes, setNodes] = useState<UnifiedWorkflowNode[]>(
-    (initialWorkflow as any)?.nodes || defaultWorkflow.nodes
+    (initialWorkflow?.nodes as UnifiedWorkflowNode[]) || defaultWorkflow.nodes
   )
   const [connections, setConnections] = useState<WorkflowConnection[]>(
-    (initialWorkflow as any)?.connections || defaultWorkflow.connections
+    (initialWorkflow?.connections as WorkflowConnection[]) || defaultWorkflow.connections
   )
   const [selectedConfiguration, setSelectedConfiguration] = useState('loan_approval_config')
 
@@ -138,7 +141,7 @@ export const UnifiedWorkflowBuilder = React.memo(function UnifiedWorkflowBuilder
     setNodes(prev => [...prev, newNode])
   }, [generateId])
 
-  const handleNodeUpdate = useCallback((nodeId: string, updates: Partial<WorkflowNode>) => {
+  const handleNodeUpdate = useCallback((nodeId: string, updates: Partial<UnifiedWorkflowNode>) => {
     setNodes(prev => prev.map(node => 
       node.id === nodeId ? { ...node, ...updates } : node
     ))
@@ -208,8 +211,30 @@ export const UnifiedWorkflowBuilder = React.memo(function UnifiedWorkflowBuilder
     const template = templates.find(t => t.id === templateId)
     if (!template) return
 
-    setNodes(template.nodes)
-    setConnections(template.connections)
+    // Map template nodes to unified workflow nodes with positions
+    const mappedNodes: WorkflowNode[] = template.nodes.map((n, idx) => ({
+      id: `${n.id}-${Date.now()}-${idx}`,
+      type: n.type,
+      position: { 
+        x: 100 + (idx % 4) * 200, 
+        y: 100 + Math.floor(idx / 4) * 150 
+      },
+      data: {
+        label: n.data.label,
+        description: n.data.description,
+        config: n.data.config
+      }
+    }))
+
+    const mappedConnections: WorkflowConnection[] = template.connections.map(c => ({
+      id: c.id,
+      source: c.source,
+      target: c.target,
+      label: c.label ?? ''
+    }))
+
+    setNodes(mappedNodes)
+    setConnections(mappedConnections)
   }, [])
 
   // Configuration management
@@ -219,6 +244,7 @@ export const UnifiedWorkflowBuilder = React.memo(function UnifiedWorkflowBuilder
     if (config) {
       // Apply configuration rules to existing nodes
       setNodes(prev => prev.map(node => {
+        if (!node.data?.label) return node
         const nodeConfig = config.nodeConfigurations[node.data.label.toLowerCase().replace(/\s+/g, '_')]
         if (nodeConfig) {
           return {
@@ -242,7 +268,8 @@ export const UnifiedWorkflowBuilder = React.memo(function UnifiedWorkflowBuilder
       if (process.env.NODE_ENV === 'development') {
         console.error('Workflow validation failed:', validation.errors)
       }
-      // TODO: Show user-friendly error message in UI
+      // Show user-friendly error message
+      alert(`Cannot save workflow: ${validation.errors.join(', ')}`)
       return
     }
 
@@ -273,18 +300,27 @@ export const UnifiedWorkflowBuilder = React.memo(function UnifiedWorkflowBuilder
       if (process.env.NODE_ENV === 'development') {
         console.error('Failed to save workflow:', error)
       }
-      // TODO: Integrate with error reporting service
+      alert(`Failed to save workflow: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }, [nodes, connections, workflowName, workflowDescription, onSave, generateId])
 
-  const handleTest = useCallback(() => {
+  const handleTest = useCallback(async () => {
     const validation = WorkflowBusinessLogicService.validateWorkflow(nodes, connections)
+    
+    // Show warnings if any
+    if (validation.warnings && validation.warnings.length > 0) {
+      console.warn('Workflow validation warnings:', validation.warnings)
+      if (process.env.NODE_ENV === 'development') {
+        alert(`Workflow warnings: ${validation.warnings.join(', ')}`)
+      }
+    }
+    
     if (!validation.isValid) {
       // Log validation errors for debugging in development
       if (process.env.NODE_ENV === 'development') {
         console.error('Cannot test invalid workflow:', validation.errors)
       }
-      // TODO: Show user-friendly error message in UI
+      alert(`Cannot test workflow:\n${validation.errors.join('\n')}`)
       return
     }
 
@@ -309,13 +345,35 @@ export const UnifiedWorkflowBuilder = React.memo(function UnifiedWorkflowBuilder
         status: "draft"
       }
       
+      // Save workflow temporarily for testing
+      const { workflowService } = await import('@/lib/services/unified-workflow-service')
+      
+      // Initialize execution engine for testing
+      const executionEngine = new WorkflowExecutionEngine(workflowService)
+      await workflowService.saveWorkflow(workflow)
+      
+      // Execute test with sample data
+      const testData = {
+        creditScore: 750,
+        income: 75000,
+        debtToIncomeRatio: 0.25,
+        employmentHistory: "stable",
+        applicationAmount: 25000
+      }
+      
+      const result = await executionEngine.executeWorkflow(workflow.id, testData)
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Workflow test result:', result)
+      }
+      
       onTest?.(workflow)
     } catch (error) {
       // Handle test error with proper error service
       if (process.env.NODE_ENV === 'development') {
         console.error('Failed to test workflow:', error)
       }
-      // TODO: Integrate with error reporting service
+      alert(`Failed to test workflow: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }, [nodes, connections, workflowName, workflowDescription, onTest, generateId])
 

@@ -4,7 +4,7 @@ import { useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { WorkflowCanvas } from "./workflow-canvas"
+import { WorkflowCanvas } from "./canvas/WorkflowCanvas"
 import { WorkflowToolbox } from "./workflow-toolbox"
 import { WorkflowProperties } from "./workflow-properties"
 import { Save, Play, ArrowLeft, Settings } from "lucide-react"
@@ -13,7 +13,8 @@ import Link from "next/link"
 // Type definitions for workflow components
 export interface WorkflowNode {
   id: string
-  type: "start" | "condition" | "action" | "end"
+  type: "start" | "condition" | "action" | "end" | "data_source" | "integration" | "validation" | 
+        "rule_set" | "decision" | "ai_decision" | "batch_process" | "notification" | "audit_log"
   position: { x: number; y: number }
   data: {
     label: string
@@ -51,7 +52,14 @@ export function WorkflowBuilder() {
   // State management
   const [workflowName, setWorkflowName] = useState(DEFAULT_WORKFLOW_NAME)
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null)
-  const [nodes, setNodes] = useState<WorkflowNode[]>([INITIAL_START_NODE])
+  const [nodes, setNodes] = useState<WorkflowNode[]>([
+    {
+      id: "start-1",
+      type: "start",
+      position: { x: 100, y: 100 },
+      data: { label: "Application Received" },
+    }
+  ])
   const [connections, setConnections] = useState<WorkflowConnection[]>([])
 
   /**
@@ -100,6 +108,43 @@ export function WorkflowBuilder() {
     // Clear selection if the deleted node was selected
     setSelectedNode(prevSelected => 
       prevSelected?.id === nodeId ? null : prevSelected
+    )
+  }, [])
+
+  /**
+   * Creates a new connection between two nodes
+   * @param sourceId - The ID of the source node
+   * @param targetId - The ID of the target node
+   * @param label - Optional label for the connection
+   */
+  const handleConnectionCreate = useCallback((sourceId: string, targetId: string, label?: string) => {
+    // Check if connection already exists
+    const existingConnection = connections.find(conn => 
+      conn.source === sourceId && conn.target === targetId
+    )
+    
+    if (existingConnection) {
+      return // Connection already exists
+    }
+
+    // Create new connection
+    const newConnection: WorkflowConnection = {
+      id: `connection-${sourceId}-${targetId}-${Date.now()}`,
+      source: sourceId,
+      target: targetId,
+      label
+    }
+
+    setConnections(prevConnections => [...prevConnections, newConnection])
+  }, [connections])
+
+  /**
+   * Deletes a connection
+   * @param connectionId - The ID of the connection to delete
+   */
+  const handleConnectionDelete = useCallback((connectionId: string) => {
+    setConnections(prevConnections => 
+      prevConnections.filter(conn => conn.id !== connectionId)
     )
   }, [])
 
@@ -191,6 +236,8 @@ export function WorkflowBuilder() {
           onNodeSelect={setSelectedNode}
           onNodeUpdate={handleUpdateNode}
           onNodeDelete={handleDeleteNode}
+          onConnectionCreate={handleConnectionCreate}
+          onConnectionDelete={handleConnectionDelete}
         />
       </div>
 

@@ -5,8 +5,8 @@ import { WorkflowNode as UnifiedWorkflowNode, WorkflowConnection } from '@/lib/t
 import { CanvasState, CanvasActions } from '@/lib/hooks/useWorkflowCanvas'
 import { cn } from '@/lib/utils'
 
-import { WorkflowNode } from './WorkflowNode'
-import { WorkflowConnectionLine } from './WorkflowConnectionLine'
+import { MemoWorkflowNode } from './WorkflowNode'
+import { MemoWorkflowConnectionLine } from './WorkflowConnectionLine'
 import { SelectionArea } from './SelectionArea'
 import { ConnectionPreview } from './ConnectionPreview'
 
@@ -56,6 +56,8 @@ export function WorkflowCanvas({
 
   const [draggedNode, setDraggedNode] = React.useState<string | null>(null)
   const [dragOffset, setDragOffset] = React.useState({ x: 0, y: 0 })
+  const rafIdRef = useRef<number | null>(null)
+  const latestPosRef = useRef<{ x: number; y: number } | null>(null)
 
   // Handle canvas events
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
@@ -183,32 +185,44 @@ export function WorkflowCanvas({
     if (!draggedNode) return
 
     const handleMouseMove = (e: MouseEvent) => {
-      const rect = canvasRef.current?.getBoundingClientRect()
-      if (!rect) return
+        const rect = canvasRef.current?.getBoundingClientRect()
+        if (!rect) return
 
-      const mouseX = e.clientX - rect.left
-      const mouseY = e.clientY - rect.top
-      const canvasPos = actions.screenToCanvas(mouseX, mouseY)
+        const mouseX = e.clientX - rect.left
+        const mouseY = e.clientY - rect.top
+        const canvasPos = actions.screenToCanvas(mouseX, mouseY)
 
-      const newPosition = {
-        x: canvasPos.x - dragOffset.x,
-        y: canvasPos.y - dragOffset.y
-      }
+        latestPosRef.current = {
+            x: canvasPos.x - dragOffset.x,
+            y: canvasPos.y - dragOffset.y
+        }
 
-      onNodeUpdate(draggedNode, { position: newPosition })
+        if (rafIdRef.current === null) {
+            rafIdRef.current = requestAnimationFrame(() => {
+                rafIdRef.current = null
+                const pos = latestPosRef.current
+                if (pos && draggedNode) {
+                    onNodeUpdate(draggedNode, { position: pos })
+                }
+            })
+        }
     }
 
     const handleMouseUp = () => {
-      setDraggedNode(null)
-      setDragOffset({ x: 0, y: 0 })
+        if (rafIdRef.current !== null) {
+            cancelAnimationFrame(rafIdRef.current)
+            rafIdRef.current = null
+        }
+        setDraggedNode(null)
+        setDragOffset({ x: 0, y: 0 })
     }
 
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
     }
   }, [draggedNode, dragOffset, actions, canvasRef, onNodeUpdate])
 
@@ -247,7 +261,8 @@ export function WorkflowCanvas({
       onMouseMove={handleCanvasMouseMove}
       onMouseUp={handleCanvasMouseUp}
     >
-      {/* Canvas Content */}
+      {/* Grid and canvas content */}
+      {/* Removed illustrative multi-line comment blocks to avoid JSX parse issues */}
       <div style={{ transform }}>
         {/* Grid Background */}
         <div className="absolute inset-0 opacity-20">
@@ -276,11 +291,10 @@ export function WorkflowCanvas({
           {connections.map(connection => {
             const sourceNode = nodes.find(n => n.id === connection.source)
             const targetNode = nodes.find(n => n.id === connection.target)
-            
             if (!sourceNode || !targetNode) return null
 
             return (
-              <WorkflowConnectionLine
+              <MemoWorkflowConnectionLine
                 key={connection.id}
                 connection={connection}
                 sourcePosition={sourceNode.position}
@@ -308,7 +322,7 @@ export function WorkflowCanvas({
         {/* Nodes */}
         <div style={{ zIndex: 2 }}>
           {nodes.map(node => (
-            <WorkflowNode
+            <MemoWorkflowNode
               key={node.id}
               node={node}
               isSelected={selectedNode?.id === node.id}

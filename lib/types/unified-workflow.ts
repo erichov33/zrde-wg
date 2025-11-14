@@ -5,7 +5,7 @@
  * across the entire application to eliminate type conflicts and duplications.
  */
 
-import { RuleSet, Rule } from "@/lib/engines/rule-engine"
+import { RuleSet, Rule } from "../engines/rule-engine"
 
 // ============================================================================
 // CORE WORKFLOW TYPES - SINGLE SOURCE OF TRUTH
@@ -420,11 +420,11 @@ export interface WorkflowActions {
 
 // Service interfaces
 export interface IWorkflowService {
-  getWorkflow(id: string): Promise<WorkflowDefinition>
-  saveWorkflow(workflow: WorkflowDefinition): Promise<WorkflowDefinition>
+  getWorkflow(id: string): Promise<WorkflowConfig>
+  saveWorkflow(workflow: WorkflowDefinition): Promise<WorkflowConfig>
   deleteWorkflow(id: string): Promise<void>
   executeWorkflow(id: string): Promise<any>
-  validateWorkflow(workflow: WorkflowDefinition): Promise<ValidationResult>
+  validateWorkflow(workflow: WorkflowConfig): Promise<ValidationResult>
 }
 
 // Event types

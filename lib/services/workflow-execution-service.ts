@@ -92,12 +92,14 @@ export interface NodeExecutionOutput {
 export interface ExecutionResult {
   workflowId: string
   executionId: string
-  status: 'success' | 'error' | 'pending'
+  status: 'success' | 'error' | 'pending' | 'timeout' | 'cancelled'
   result: NodeExecutionOutput
   executionPath: string[]
   executionTime: number
   errors?: string[]
   logs: ExecutionLog[]
+  metrics?: ExecutionMetrics
+  parallelBranches?: ParallelBranchResult[]
 }
 
 export interface ExecutionLog {
@@ -118,6 +120,50 @@ export interface ExecutionRequest {
   context?: Record<string, unknown>
   simulationMode?: boolean
   userId?: string
+  options?: ExecutionOptions
+}
+
+export interface ExecutionOptions {
+  enableParallelExecution?: boolean
+  maxParallelBranches?: number
+  timeout?: number
+  retryConfig?: RetryConfig
+  enableMetrics?: boolean
+  enableDetailedLogging?: boolean
+  priority?: 'low' | 'normal' | 'high'
+  tags?: string[]
+}
+
+export interface RetryConfig {
+  maxRetries: number
+  retryDelay: number
+  backoffMultiplier?: number
+  retryableErrors?: string[]
+}
+
+export interface ExecutionMetrics {
+  startTime: Date
+  endTime?: Date
+  totalDuration?: number
+  nodeExecutionTimes: Record<string, number>
+  memoryUsage?: number
+  cpuUsage?: number
+  parallelBranchesExecuted?: number
+  retriesPerformed?: number
+  totalNodes: number
+  executedNodes: number
+  skippedNodes: number
+  failedNodes: number
+  retryCount: number
+  averageNodeTime: number
+}
+
+export interface ParallelBranchResult {
+  branchId: string
+  nodes: string[]
+  status: 'pending' | 'success' | 'error'
+  executionTime: number
+  error?: string
 }
 
 // Enhanced ExecutionContext with proper typing
@@ -128,6 +174,9 @@ export interface ExecutionContext {
   variables: Record<string, unknown>
   executionId: string
   simulationMode: boolean
+  options: ExecutionOptions
+  metrics: ExecutionMetrics
+  startTime: Date
   [key: string]: unknown
 }
 
@@ -136,11 +185,15 @@ export class WorkflowExecutionService {
   private decisionService: EnhancedDecisionService
   private workflows: Map<string, Workflow> = new Map()
   private executions: Map<string, ExecutionResult> = new Map()
+  private activeExecutions: Map<string, AbortController> = new Map()
+  private executionQueue: ExecutionRequest[] = []
+  private isProcessingQueue: boolean = false
 
   constructor() {
     this.ruleEngine = new RuleEngine()
     this.decisionService = new EnhancedDecisionService()
     this.initializeDefaultWorkflows()
+    this.startQueueProcessor()
   }
 
   private initializeDefaultWorkflows() {
@@ -298,9 +351,61 @@ export class WorkflowExecutionService {
   }
 
   async executeWorkflow(request: ExecutionRequest): Promise<ExecutionResult> {
+    const workflow = this.workflows.get(request.workflowId)
+    if (!workflow) {
+      throw new Error(`Workflow ${request.workflowId} not found`)
+    }
+
     const executionId = `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    const startTime = Date.now()
-    
+    const options: ExecutionOptions = {
+      enableParallelExecution: false,
+      maxParallelBranches: 3,
+      timeout: 300000, // 5 minutes default
+      enableMetrics: true,
+      enableDetailedLogging: true,
+      priority: 'normal',
+      retryConfig: {
+        maxRetries: 3,
+        retryDelay: 1000,
+        backoffMultiplier: 2,
+        retryableErrors: ['NETWORK_ERROR', 'TIMEOUT', 'TEMPORARY_FAILURE']
+      },
+      ...request.options
+    }
+
+    const context: ExecutionContext = {
+      applicationData: request.input.applicationData || {} as ApplicationData,
+      externalData: request.input.externalData,
+      userContext: request.input.userContext,
+      variables: { ...request.input, ...request.context },
+      executionId,
+      simulationMode: request.simulationMode || false,
+      options,
+      metrics: {
+        startTime: new Date(),
+        endTime: undefined,
+        totalDuration: undefined,
+        nodeExecutionTimes: {},
+        memoryUsage: undefined,
+        cpuUsage: undefined,
+        parallelBranchesExecuted: undefined,
+        retriesPerformed: undefined,
+        totalNodes: workflow.nodes.length,
+        executedNodes: 0,
+        skippedNodes: 0,
+        failedNodes: 0,
+        retryCount: 0,
+        averageNodeTime: 0
+      },
+      startTime: new Date(),
+      metadata: {
+        workflowId: request.workflowId,
+        executionId,
+        userId: request.userId,
+        simulationMode: request.simulationMode || false
+      }
+    }
+
     const result: ExecutionResult = {
       workflowId: request.workflowId,
       executionId,
@@ -308,52 +413,305 @@ export class WorkflowExecutionService {
       result: { success: false },
       executionPath: [],
       executionTime: 0,
-      logs: []
+      logs: [],
+      metrics: context.metrics,
+      parallelBranches: []
     }
+
+    // Set up abort controller for timeout and cancellation
+    const abortController = new AbortController()
+    this.activeExecutions.set(executionId, abortController)
+
+    // Set up timeout
+    const timeoutId = setTimeout(() => {
+      abortController.abort()
+      result.status = 'timeout'
+    }, options.timeout!)
+
+    const startTime = Date.now()
 
     try {
-      const workflow = this.workflows.get(request.workflowId)
-      if (!workflow) {
-        throw new Error(`Workflow not found: ${request.workflowId}`)
+      // Check for parallel execution opportunities
+      if (options.enableParallelExecution) {
+        await this.executeWorkflowWithParallelism(workflow, context, result, abortController.signal)
+      } else {
+        await this.executeWorkflowSequentially(workflow, context, result, abortController.signal)
       }
 
-      // Initialize execution context
-      const context: ExecutionContext = {
-        applicationData: request.input.applicationData || {} as ApplicationData,
-        externalData: request.input.externalData,
-        userContext: request.input.userContext,
-        variables: { ...request.input, ...request.context },
-        executionId,
-        simulationMode: request.simulationMode || false,
-        metadata: {
-          workflowId: request.workflowId,
-          executionId,
-          userId: request.userId,
-          simulationMode: request.simulationMode || false
-        }
+      if (result.status === 'pending') {
+        result.status = 'success'
+        result.result = { success: true, data: context.variables }
       }
-
-      // Find start node
-      const startNode = workflow.nodes.find(node => node.type === 'start')
-      if (!startNode) {
-        throw new Error('No start node found in workflow')
-      }
-
-      // Execute workflow
-      const executionResult = await this.executeNode(workflow, startNode, context, result)
-      
-      result.status = 'success'
-      result.result = executionResult
-      result.executionTime = Date.now() - startTime
-
     } catch (error) {
-      result.status = 'error'
-      result.errors = [error instanceof Error ? error.message : 'Unknown error']
-      result.executionTime = Date.now() - startTime
+      if (abortController.signal.aborted) {
+        result.status = result.status === 'timeout' ? 'timeout' : 'cancelled'
+      } else {
+        result.status = 'error'
+        result.errors = result.errors || []
+        result.errors.push(error instanceof Error ? error.message : 'Unknown error')
+      }
+    } finally {
+      clearTimeout(timeoutId)
+      this.activeExecutions.delete(executionId)
     }
 
+    result.executionTime = Date.now() - startTime
+    
+    // Calculate final metrics
+    if (context.metrics.executedNodes > 0) {
+      context.metrics.averageNodeTime = result.executionTime / context.metrics.executedNodes
+    }
+    
+    result.metrics = context.metrics
     this.executions.set(executionId, result)
     return result
+  }
+
+  private async executeWorkflowSequentially(
+    workflow: Workflow,
+    context: ExecutionContext,
+    result: ExecutionResult,
+    signal: AbortSignal
+  ): Promise<void> {
+    // Find start node
+    const startNode = workflow.nodes.find(node => node.type === 'start')
+    if (!startNode) {
+      throw new Error('No start node found in workflow')
+    }
+
+    let currentNode: WorkflowNode | null = startNode
+    while (currentNode && !signal.aborted) {
+      const nodeOutput = await this.executeNodeWithRetry(workflow, currentNode, context, result, signal)
+      
+      if (!nodeOutput.success) {
+        result.status = 'error'
+        result.errors = result.errors || []
+        result.errors.push(nodeOutput.error || 'Unknown error')
+        context.metrics.failedNodes++
+        break
+      }
+
+      context.metrics.executedNodes++
+
+      // Update context variables
+      if (nodeOutput.variables) {
+        Object.assign(context.variables, nodeOutput.variables)
+      }
+
+      // Find next node
+      if (nodeOutput.nextNodeId) {
+        currentNode = workflow.nodes.find(node => node.id === nodeOutput.nextNodeId) || null
+      } else {
+        currentNode = await this.findNextNode(workflow, currentNode, context)
+      }
+    }
+  }
+
+  private async executeWorkflowWithParallelism(
+    workflow: Workflow,
+    context: ExecutionContext,
+    result: ExecutionResult,
+    signal: AbortSignal
+  ): Promise<void> {
+    // Analyze workflow for parallel execution opportunities
+    const parallelBranches = this.identifyParallelBranches(workflow)
+    
+    if (parallelBranches.length === 0) {
+      // No parallel opportunities, fall back to sequential
+      await this.executeWorkflowSequentially(workflow, context, result, signal)
+      return
+    }
+
+    // Execute parallel branches
+    const branchPromises = parallelBranches.map(async (branch) => {
+      const branchResult: ParallelBranchResult = {
+        branchId: branch.id,
+        nodes: branch.nodeIds,
+        status: 'pending',
+        executionTime: 0
+      }
+
+      const branchStartTime = Date.now()
+      
+      try {
+        // Execute nodes in this branch
+        for (const nodeId of branch.nodeIds) {
+          if (signal.aborted) break
+          
+          const node = workflow.nodes.find(n => n.id === nodeId)
+          if (!node) continue
+
+          const nodeOutput = await this.executeNodeWithRetry(workflow, node, context, result, signal)
+          
+          if (!nodeOutput.success) {
+            branchResult.status = 'error'
+            branchResult.error = nodeOutput.error
+            context.metrics.failedNodes++
+            break
+          }
+
+          context.metrics.executedNodes++
+        }
+
+        if (branchResult.status === 'pending') {
+          branchResult.status = 'success'
+        }
+      } catch (error) {
+        branchResult.status = 'error'
+        branchResult.error = error instanceof Error ? error.message : 'Unknown error'
+      }
+
+      branchResult.executionTime = Date.now() - branchStartTime
+      return branchResult
+    })
+
+    // Wait for all branches to complete
+    const branchResults = await Promise.allSettled(branchPromises)
+    
+    result.parallelBranches = branchResults.map(r => 
+      r.status === 'fulfilled' ? r.value : {
+        branchId: 'unknown',
+        nodes: [],
+        status: 'error' as const,
+        executionTime: 0,
+        error: r.reason
+      }
+    )
+
+    // Check if any branch failed
+    const hasFailures = result.parallelBranches.some(b => b.status === 'error')
+    if (hasFailures) {
+      result.status = 'error'
+      result.errors = result.errors || []
+      result.errors.push('One or more parallel branches failed')
+    }
+  }
+
+  private async executeNodeWithRetry(
+    workflow: Workflow,
+    node: WorkflowNode,
+    context: ExecutionContext,
+    result: ExecutionResult,
+    signal: AbortSignal
+  ): Promise<NodeExecutionOutput> {
+    const retryConfig = context.options.retryConfig!
+    let lastError: string | undefined
+    
+    for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
+      if (signal.aborted) {
+        return { success: false, error: 'Execution cancelled' }
+      }
+
+      try {
+        const output = await this.executeNode(workflow, node, context, result)
+        
+        if (output.success || !this.isRetryableError(output.error, retryConfig)) {
+          if (attempt > 0) {
+            context.metrics.retryCount += attempt
+          }
+          return output
+        }
+        
+        lastError = output.error
+        
+        // Wait before retry (with exponential backoff)
+        if (attempt < retryConfig.maxRetries) {
+          const backoffMultiplier = retryConfig.backoffMultiplier ?? 2
+          const delay = retryConfig.retryDelay * Math.pow(backoffMultiplier, attempt)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : 'Unknown error'
+        
+        if (!this.isRetryableError(lastError, retryConfig)) {
+          break
+        }
+      }
+    }
+
+    context.metrics.retryCount += retryConfig.maxRetries
+    return { success: false, error: lastError || 'Max retries exceeded' }
+  }
+
+  private isRetryableError(error: string | undefined, retryConfig: RetryConfig): boolean {
+    if (!error) return false
+    const retryableErrors = retryConfig.retryableErrors ?? []
+    return retryableErrors.some(retryableError => 
+      error.includes(retryableError)
+    )
+  }
+
+  private identifyParallelBranches(workflow: Workflow): Array<{ id: string; nodeIds: string[] }> {
+    // Simple implementation - identify nodes that can run in parallel
+    // This is a basic version; a more sophisticated implementation would analyze dependencies
+    const branches: Array<{ id: string; nodeIds: string[] }> = []
+    
+    // Find nodes that have no dependencies on each other
+    const independentNodes = workflow.nodes.filter(node => 
+      node.type !== 'start' && node.type !== 'end'
+    )
+
+    // Group independent nodes into branches (simplified logic)
+    if (independentNodes.length > 1) {
+      const midpoint = Math.ceil(independentNodes.length / 2)
+      branches.push({
+        id: 'branch-1',
+        nodeIds: independentNodes.slice(0, midpoint).map(n => n.id)
+      })
+      branches.push({
+        id: 'branch-2', 
+        nodeIds: independentNodes.slice(midpoint).map(n => n.id)
+      })
+    }
+
+    return branches
+  }
+
+  private startQueueProcessor(): void {
+    setInterval(async () => {
+      if (!this.isProcessingQueue && this.executionQueue.length > 0) {
+        this.isProcessingQueue = true
+        
+        // Sort by priority
+        this.executionQueue.sort((a, b) => {
+          const priorityOrder = { high: 3, normal: 2, low: 1 }
+          const aPriority = priorityOrder[a.options?.priority || 'normal']
+          const bPriority = priorityOrder[b.options?.priority || 'normal']
+          return bPriority - aPriority
+        })
+
+        const request = this.executionQueue.shift()
+        if (request) {
+          try {
+            await this.executeWorkflow(request)
+          } catch (error) {
+            console.error('Queue execution error:', error)
+          }
+        }
+        
+        this.isProcessingQueue = false
+      }
+    }, 1000)
+  }
+
+  public queueExecution(request: ExecutionRequest): string {
+    const executionId = `queued_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    this.executionQueue.push({ ...request, context: { ...request.context, queuedExecutionId: executionId } })
+    return executionId
+  }
+
+  public cancelExecution(executionId: string): boolean {
+    const controller = this.activeExecutions.get(executionId)
+    if (controller) {
+      controller.abort()
+      return true
+    }
+    return false
+  }
+
+  public getExecutionMetrics(executionId: string): ExecutionMetrics | undefined {
+    const execution = this.executions.get(executionId)
+    return execution?.metrics
   }
 
   private async executeNode(

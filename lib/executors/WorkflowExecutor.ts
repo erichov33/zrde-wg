@@ -63,7 +63,7 @@ export class DefaultWorkflowExecutor implements WorkflowExecutor {
     executionLog.push({
       nodeId: node.id,
       nodeType: node.type,
-      nodeLabel: node.data.label,
+      nodeLabel: node.data?.label || `${node.type} Node`,
       timestamp: new Date(),
       status: 'started'
     })
@@ -75,7 +75,7 @@ export class DefaultWorkflowExecutor implements WorkflowExecutor {
       executionLog.push({
         nodeId: node.id,
         nodeType: node.type,
-        nodeLabel: node.data.label,
+        nodeLabel: node.data?.label || `${node.type} Node`,
         timestamp: new Date(),
         status: 'completed',
         result: nodeResult
@@ -116,7 +116,7 @@ export class DefaultWorkflowExecutor implements WorkflowExecutor {
       executionLog.push({
         nodeId: node.id,
         nodeType: node.type,
-        nodeLabel: node.data.label,
+        nodeLabel: node.data?.label || `${node.type} Node`,
         timestamp: new Date(),
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error'

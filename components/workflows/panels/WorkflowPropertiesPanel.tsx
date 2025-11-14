@@ -113,53 +113,69 @@ export function WorkflowPropertiesPanel({
   const addCondition = useCallback(() => {
     if (!selectedConnection || !onUpdateConnection) return
     
-    // Handle conditions as either array or Record, defaulting to empty array
     const currentConditions = selectedConnection.conditions
-    const conditionsArray = Array.isArray(currentConditions) 
-      ? currentConditions 
-      : currentConditions 
-        ? Object.values(currentConditions) 
-        : []
-    
-    const newCondition = {
+    const conditionsArray = getConditionsArray(currentConditions)
+
+    const newCondition: ConnectionCondition = {
       field: '',
-      operator: 'equals' as const,
+      operator: 'equals',
       value: '',
-      type: 'string' as const
+      type: 'string'
     }
-    
-    handleConnectionUpdate('conditions', [...conditionsArray, newCondition])
+
+    const newConditionsArray = [...conditionsArray, newCondition]
+    const record = Object.fromEntries(
+      newConditionsArray
+        .filter(c => c.field)
+        .map(c => [c.field, c.value])
+    )
+
+    handleConnectionUpdate('conditions', record)
   }, [selectedConnection, onUpdateConnection, handleConnectionUpdate])
 
   const removeCondition = useCallback((index: number) => {
     if (!selectedConnection || !onUpdateConnection) return
     
-    // Handle conditions as either array or Record, defaulting to empty array
     const currentConditions = selectedConnection.conditions
-    const conditionsArray = Array.isArray(currentConditions) 
-      ? currentConditions 
-      : currentConditions 
-        ? Object.values(currentConditions) 
-        : []
+    const conditionsArray = getConditionsArray(currentConditions)
     
-    const newConditions = conditionsArray.filter((_, i) => i !== index)
-    handleConnectionUpdate('conditions', newConditions)
+    const newConditionsArray = conditionsArray.filter((_, i) => i !== index)
+    const record = Object.fromEntries(
+      newConditionsArray
+        .filter(c => c.field)
+        .map(c => [c.field, c.value])
+    )
+
+    handleConnectionUpdate('conditions', record)
   }, [selectedConnection, onUpdateConnection, handleConnectionUpdate])
 
-  const updateCondition = useCallback((index: number, field: string, value: any) => {
+  const updateCondition = useCallback(<K extends keyof ConnectionCondition>(
+    index: number,
+    key: K,
+    value: ConnectionCondition[K]
+  ) => {
     if (!selectedConnection || !onUpdateConnection) return
-    
-    // Handle conditions as either array or Record, defaulting to empty array
+
     const currentConditions = selectedConnection.conditions
-    const conditionsArray = Array.isArray(currentConditions) 
-      ? currentConditions 
-      : currentConditions 
-        ? Object.values(currentConditions) 
-        : []
-    
-    const conditions = [...conditionsArray]
-    conditions[index] = { ...conditions[index], [field]: value }
-    handleConnectionUpdate('conditions', conditions)
+    const conditionsArray = getConditionsArray(currentConditions)
+
+    const next = [...conditionsArray]
+    const current = next[index]
+
+    const updated: ConnectionCondition = {
+      ...current,
+      [key]: value,
+    } as ConnectionCondition
+
+    next[index] = updated
+
+    const record = Object.fromEntries(
+      next
+        .filter(c => c.field)
+        .map(c => [c.field, c.value])
+    )
+
+    handleConnectionUpdate('conditions', record)
   }, [selectedConnection, onUpdateConnection, handleConnectionUpdate])
 
   if (!selectedNode && !selectedConnection) {
@@ -383,7 +399,7 @@ export function WorkflowPropertiesPanel({
                         />
                         <select
                           value={condition.operator}
-                          onChange={(e) => updateCondition(index, 'operator', e.target.value)}
+                          onChange={(e) => updateCondition(index, 'operator', e.target.value as ConnectionCondition['operator'])}
                           className="px-2 py-1 border border-gray-300 rounded text-xs"
                         >
                           <option value="equals">Equals</option>

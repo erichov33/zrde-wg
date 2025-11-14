@@ -5,8 +5,18 @@
  * code organization and reduce import complexity.
  */
 
-// Core types
-export * from './types'
+// Core types - export specific types to avoid conflicts
+export type { 
+  WorkflowConfig, 
+  WorkflowNode, 
+  WorkflowConnection,
+  ExecutionContext
+} from './types/unified-workflow'
+export type { 
+  ExecutableNode,
+  WorkflowExecutionResult,
+  WorkflowExecutionContext
+} from './types/execution-contracts'
 
 // Services
 export { serviceRegistry, ServiceRegistry } from './services/ServiceRegistry'
@@ -27,6 +37,9 @@ export type { WorkflowValidator } from './validators/WorkflowValidator'
 
 // Engines
 export { RuleEngine } from './engines/rule-engine'
+export * from './engines/workflow-execution-engine'
+export * from './engines/node-executor-factory'
+export * from './engines/async-operation-registry'
 
 // Contexts
 export { AuthProvider, useAuth } from './contexts/auth-context'

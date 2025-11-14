@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Slider } from "@/components/ui/slider"
-import type { WorkflowNode } from "./workflow-builder"
+import type { WorkflowNode } from "@/lib/types/unified-workflow"
 
 interface WorkflowPropertiesProps {
   selectedNode: WorkflowNode | null

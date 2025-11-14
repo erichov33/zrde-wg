@@ -202,27 +202,41 @@ export function EnhancedWorkflowCanvas({
   }, [connectionState, connections, onConnectionCreate])
 
   /**
+   * Throttled mouse move handler for better performance
+   */
+  const throttledMouseMove = useRef<number | null>(null)
+  
+  /**
    * Handles mouse movement during drag operations and connection creation
    */
   const handleCanvasMouseMove = useCallback((event: React.MouseEvent) => {
-    const canvasPosition = getCanvasPosition(event)
+    // Throttle mouse move events for better performance
+    if (throttledMouseMove.current) {
+      return
+    }
     
-    // Handle node dragging
-    if (dragState.nodeId) {
-      const newPosition = {
-        x: Math.max(0, canvasPosition.x - dragState.offset.x),
-        y: Math.max(0, canvasPosition.y - dragState.offset.y),
+    throttledMouseMove.current = requestAnimationFrame(() => {
+      const canvasPosition = getCanvasPosition(event)
+      
+      // Handle node dragging
+      if (dragState.nodeId) {
+        const newPosition = {
+          x: Math.max(0, canvasPosition.x - dragState.offset.x),
+          y: Math.max(0, canvasPosition.y - dragState.offset.y),
+        }
+        onNodeUpdate(dragState.nodeId, { position: newPosition })
       }
-      onNodeUpdate(dragState.nodeId, { position: newPosition })
-    }
-    
-    // Handle connection creation
-    if (connectionState.isCreating) {
-      setConnectionState(prev => ({
-        ...prev,
-        tempEndPoint: canvasPosition
-      }))
-    }
+      
+      // Handle connection creation
+      if (connectionState.isCreating) {
+        setConnectionState(prev => ({
+          ...prev,
+          tempEndPoint: canvasPosition
+        }))
+      }
+      
+      throttledMouseMove.current = null
+    })
   }, [dragState, connectionState, getCanvasPosition, onNodeUpdate])
 
   /**
@@ -296,7 +310,7 @@ export function EnhancedWorkflowCanvas({
    * Renders connection lines between nodes
    */
   const renderConnections = () => (
-    <svg className="absolute inset-0 pointer-events-none">
+    <svg className="absolute inset-0 pointer-events-none" style={{ zIndex: 5 }}>
       {/* Existing connections */}
       {connections.map((connection) => {
         const sourceNode = nodes.find(n => n.id === connection.source)
@@ -316,28 +330,56 @@ export function EnhancedWorkflowCanvas({
 
         return (
           <g key={connection.id}>
+            {/* Connection shadow for better visibility */}
+            <path
+              d={path}
+              stroke="rgba(0, 0, 0, 0.1)"
+              strokeWidth={isSelected ? "5" : "4"}
+              fill="none"
+              className="pointer-events-none"
+            />
+            
             {/* Connection path */}
             <path
               d={path}
               stroke={isSelected ? "hsl(var(--primary))" : "hsl(var(--border))"}
               strokeWidth={isSelected ? "3" : "2"}
               fill="none"
-              markerEnd="url(#arrowhead)"
+              markerEnd={isSelected ? "url(#arrowhead-selected)" : "url(#arrowhead)"}
               className="pointer-events-auto cursor-pointer hover:stroke-primary/70"
               onClick={(e) => handleConnectionClick(e as any, connection)}
             />
             
             {/* Connection label */}
             {connection.label && (
-              <text
-                x={(startPoint.x + endPoint.x) / 2}
-                y={(startPoint.y + endPoint.y) / 2 - 10}
-                textAnchor="middle"
-                className="fill-current text-xs font-medium pointer-events-none"
-                style={{ fill: "hsl(var(--foreground))" }}
-              >
-                {connection.label}
-              </text>
+              <g>
+                {/* Label background */}
+                <rect
+                  x={(startPoint.x + endPoint.x) / 2 - connection.label.length * 3}
+                  y={(startPoint.y + endPoint.y) / 2 - 18}
+                  width={connection.label.length * 6}
+                  height={16}
+                  fill="white"
+                  stroke="#e2e8f0"
+                  strokeWidth="1"
+                  rx="3"
+                  className="pointer-events-none"
+                />
+                {/* Label text */}
+                <text
+                  x={(startPoint.x + endPoint.x) / 2}
+                  y={(startPoint.y + endPoint.y) / 2 - 8}
+                  textAnchor="middle"
+                  className="pointer-events-none"
+                  style={{ 
+                    fill: "#374151",
+                    fontSize: "11px",
+                    fontWeight: "500"
+                  }}
+                >
+                  {connection.label}
+                </text>
+              </g>
             )}
           </g>
         )
@@ -355,30 +397,72 @@ export function EnhancedWorkflowCanvas({
           const path = getConnectionPath(startPoint, endPoint)
           
           return (
-            <path
-              d={path}
-              stroke="hsl(var(--primary))"
-              strokeWidth="2"
-              strokeDasharray="5,5"
-              fill="none"
-              markerEnd="url(#arrowhead)"
-            />
+            <g>
+              {/* Temporary connection shadow */}
+              <path
+                d={path}
+                stroke="rgba(59, 130, 246, 0.2)"
+                strokeWidth="4"
+                fill="none"
+                className="pointer-events-none"
+              />
+              {/* Temporary connection path */}
+              <path
+                d={path}
+                stroke="#3b82f6"
+                strokeWidth="2"
+                strokeDasharray="8,4"
+                fill="none"
+                markerEnd="url(#arrowhead-temp)"
+                className="pointer-events-none"
+                style={{
+                  filter: "drop-shadow(0 2px 4px rgba(59, 130, 246, 0.3))"
+                }}
+              />
+            </g>
           )
         })()
       )}
       
-      {/* Arrow marker definition */}
+      {/* Arrow marker definitions */}
       <defs>
+        {/* Regular arrow marker */}
         <marker
           id="arrowhead"
-          markerWidth="10"
-          markerHeight="7"
-          refX="9"
-          refY="3.5"
+          markerWidth="12"
+          markerHeight="8"
+          refX="11"
+          refY="4"
           orient="auto"
-          fill="hsl(var(--border))"
+          fill="#64748b"
         >
-          <polygon points="0 0, 10 3.5, 0 7" />
+          <polygon points="0 0, 12 4, 0 8" />
+        </marker>
+        
+        {/* Temporary connection arrow marker */}
+        <marker
+          id="arrowhead-temp"
+          markerWidth="12"
+          markerHeight="8"
+          refX="11"
+          refY="4"
+          orient="auto"
+          fill="#3b82f6"
+        >
+          <polygon points="0 0, 12 4, 0 8" />
+        </marker>
+        
+        {/* Selected connection arrow marker */}
+        <marker
+          id="arrowhead-selected"
+          markerWidth="12"
+          markerHeight="8"
+          refX="11"
+          refY="4"
+          orient="auto"
+          fill="#3b82f6"
+        >
+          <polygon points="0 0, 12 4, 0 8" />
         </marker>
       </defs>
     </svg>
@@ -397,26 +481,57 @@ export function EnhancedWorkflowCanvas({
       <>
         {/* Output handle (right side) */}
         <div
-          className="absolute w-4 h-4 bg-primary rounded-full border-2 border-white shadow-lg cursor-crosshair hover:scale-110 transition-transform"
+          className="absolute w-5 h-5 bg-blue-500 rounded-full border-2 border-white shadow-lg cursor-crosshair hover:scale-125 hover:bg-blue-600 transition-all duration-200 z-30"
           style={{
-            left: points.output.x - node.position.x - CONNECTION_HANDLE_SIZE / 2,
-            top: points.output.y - node.position.y - CONNECTION_HANDLE_SIZE / 2,
+            left: points.output.x - node.position.x - 10,
+            top: points.output.y - node.position.y - 10,
+            boxShadow: "0 2px 8px rgba(59, 130, 246, 0.4)"
           }}
           onMouseDown={(e) => handleConnectionStart(e, node.id)}
           title="Drag to create connection"
-        />
+        >
+          {/* Inner dot for better visibility */}
+          <div className="absolute inset-1 bg-white rounded-full opacity-80"></div>
+        </div>
         
         {/* Input handle (left side) - only show for non-start nodes */}
         {node.type !== 'start' && (
           <div
-            className="absolute w-4 h-4 bg-secondary rounded-full border-2 border-white shadow-lg"
+            className="absolute w-5 h-5 bg-green-500 rounded-full border-2 border-white shadow-lg hover:scale-125 hover:bg-green-600 transition-all duration-200 z-30"
             style={{
-              left: points.input.x - node.position.x - CONNECTION_HANDLE_SIZE / 2,
-              top: points.input.y - node.position.y - CONNECTION_HANDLE_SIZE / 2,
+              left: points.input.x - node.position.x - 10,
+              top: points.input.y - node.position.y - 10,
+              boxShadow: "0 2px 8px rgba(34, 197, 94, 0.4)"
             }}
             onMouseUp={(e) => handleConnectionEnd(e, node.id)}
             title="Connection input"
-          />
+          >
+            {/* Inner dot for better visibility */}
+            <div className="absolute inset-1 bg-white rounded-full opacity-80"></div>
+          </div>
+        )}
+        
+        {/* Connection handle labels */}
+        <div
+          className="absolute text-xs font-medium text-blue-600 pointer-events-none"
+          style={{
+            left: points.output.x - node.position.x + 15,
+            top: points.output.y - node.position.y - 8,
+          }}
+        >
+          OUT
+        </div>
+        
+        {node.type !== 'start' && (
+          <div
+            className="absolute text-xs font-medium text-green-600 pointer-events-none"
+            style={{
+              left: points.input.x - node.position.x - 35,
+              top: points.input.y - node.position.y - 8,
+            }}
+          >
+            IN
+          </div>
         )}
       </>
     )
@@ -429,6 +544,10 @@ export function EnhancedWorkflowCanvas({
     const Icon = getNodeIcon(node.type)
     const isSelected = selectedNode?.id === node.id
     const isDragging = dragState.nodeId === node.id
+    
+    // Check for connections
+    const hasIncomingConnections = connections.some(conn => conn.target === node.id)
+    const hasOutgoingConnections = connections.some(conn => conn.source === node.id)
 
     return (
       <div
@@ -451,14 +570,39 @@ export function EnhancedWorkflowCanvas({
           onMouseDown={(event) => handleNodeMouseDown(event, node)}
         >
           <Icon className="h-5 w-5 flex-shrink-0 mb-1" />
-          <span className="text-xs font-medium text-center leading-tight" title={node.data.label}>
-            {node.data.label}
+          <span className="text-xs font-medium text-center leading-tight" title={node.data?.label || node.type}>
+            {node.data?.label || node.type}
           </span>
           
           {/* Node type badge */}
           <Badge variant="outline" className="absolute -top-2 left-2 text-xs">
             {node.type.replace('_', ' ')}
           </Badge>
+          
+          {/* Connection indicators - always visible */}
+          {hasOutgoingConnections && (
+            <div 
+              className="absolute w-3 h-3 bg-blue-500 rounded-full border border-white shadow-sm"
+              style={{
+                right: -6,
+                top: "50%",
+                transform: "translateY(-50%)"
+              }}
+              title="Has outgoing connections"
+            />
+          )}
+          
+          {hasIncomingConnections && node.type !== 'start' && (
+            <div 
+              className="absolute w-3 h-3 bg-green-500 rounded-full border border-white shadow-sm"
+              style={{
+                left: -6,
+                top: "50%",
+                transform: "translateY(-50%)"
+              }}
+              title="Has incoming connections"
+            />
+          )}
         </div>
 
         {/* Connection handles */}
@@ -500,15 +644,36 @@ export function EnhancedWorkflowCanvas({
           </p>
           <div className="flex items-center justify-center space-x-4 text-xs">
             <div className="flex items-center space-x-1">
-              <div className="w-3 h-3 bg-primary rounded-full"></div>
-              <span>Output</span>
+              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+              <span>Output (OUT)</span>
             </div>
             <div className="flex items-center space-x-1">
-              <div className="w-3 h-3 bg-secondary rounded-full"></div>
-              <span>Input</span>
+              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+              <span>Input (IN)</span>
             </div>
           </div>
         </div>
+      </div>
+    )
+  }
+
+  /**
+   * Renders debug information overlay
+   */
+  const renderDebugInfo = () => {
+    if (connections.length === 0) return null
+
+    return (
+      <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm border rounded-lg p-3 text-xs font-mono pointer-events-none z-50">
+        <div className="font-semibold mb-2">Workflow Connections ({connections.length})</div>
+        {connections.map((conn, index) => (
+          <div key={conn.id} className="mb-1">
+            <span className="text-blue-600">{conn.source}</span>
+            <span className="mx-1">→</span>
+            <span className="text-green-600">{conn.target}</span>
+            {conn.label && <span className="text-gray-500 ml-1">({conn.label})</span>}
+          </div>
+        ))}
       </div>
     )
   }
@@ -525,6 +690,7 @@ export function EnhancedWorkflowCanvas({
       {renderConnections()}
       {nodes.map(renderNode)}
       {renderInstructions()}
+      {renderDebugInfo()}
     </div>
   )
 }

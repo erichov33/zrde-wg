@@ -37,7 +37,7 @@ export function RuleConfigurationPanel({
   // Get all rules from condition and rule_set nodes
   const allRules = nodes
     .filter(node => node.type === "condition" || node.type === "rule_set")
-    .flatMap(node => node.data.rules || [])
+    .flatMap(node => node.data?.rules || [])
 
   // Get available fields from all nodes
   const availableFields = nodes
@@ -59,7 +59,7 @@ export function RuleConfigurationPanel({
     if (targetNode) {
       // Convert BusinessRule to Rule type for compatibility
       const convertedRule = convertBusinessRuleToRule(rule)
-      const existingRules = targetNode.data.rules || []
+      const existingRules = targetNode.data?.rules || []
       const updatedRules = existingRules.some(r => r.id === rule.id)
         ? existingRules.map(r => r.id === rule.id ? convertedRule : r)
         : [...existingRules, convertedRule]
@@ -83,7 +83,7 @@ export function RuleConfigurationPanel({
 
   const deleteRule = (ruleId: string) => {
     nodes.forEach(node => {
-      if (node.data.rules) {
+      if (node.data?.rules) {
         const updatedRules = node.data.rules.filter(r => r.id !== ruleId)
         onNodeUpdate(node.id, {
           data: { ...node.data, rules: updatedRules }

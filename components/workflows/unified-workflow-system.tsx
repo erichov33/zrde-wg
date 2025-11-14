@@ -11,8 +11,8 @@ import { Save, Play, ArrowLeft, Settings } from "lucide-react"
 import Link from "next/link"
 import { useUnifiedWorkflow } from "@/lib/hooks/useUnifiedWorkflow"
 import { useWorkflowCanvas } from "@/lib/hooks/useWorkflowCanvas"
-import { workflowService } from "@/lib/services/unified-workflow-service"
-import { WorkflowConnection, WorkflowConfig, WorkflowMode } from "@/lib/types/unified-workflow"
+import { useWorkflowService } from "@/lib/providers/WorkflowServiceProvider"
+import { WorkflowConnection, WorkflowConfig, WorkflowMode, NodeType } from "@/lib/types/unified-workflow"
 
 interface UnifiedWorkflowSystemProps {
   workflowId?: string
@@ -61,7 +61,17 @@ export function UnifiedWorkflowSystem({
     actions: canvasActions,
     transform,
     canvasRef
-  } = useWorkflowCanvas(nodes)
+- } = useWorkflowCanvas(nodes)
++ } = useWorkflowCanvas(
++   nodes,
++   (sourceId, targetId) => {
++     // Create default connection; can be extended to pass type/labels
++     actions.createConnection(sourceId, targetId)
++   }
++ )
+
+  // Use provider-based service rather than importing a singleton
+  const workflowService = useWorkflowService()
 
   // Connection handlers
   const handleConnectionSelect = useCallback((connectionId: string | null) => {
@@ -138,16 +148,16 @@ export function UnifiedWorkflowSystem({
     } catch (error) {
       console.error("Failed to execute workflow:", error)
     }
-  }, [workflow, onExecute])
+  }, [workflow, onExecute, workflowService])
 
   // Wrapper function to adapt between WorkflowToolbox and actions.addNode signatures
-  const handleAddNode = useCallback((type: "start" | "condition" | "action" | "end", label: string) => {
+  const handleAddNode = useCallback((type: NodeType, label: string) => {
     // Generate a position for the new node (center of canvas with some randomization)
     const position = {
       x: 300 + Math.random() * 200,
       y: 200 + Math.random() * 200
     }
-    actions.addNode(type as any, position)
+    actions.addNode(type, position)
   }, [actions])
 
   if (isLoading) {

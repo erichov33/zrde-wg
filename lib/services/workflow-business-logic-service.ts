@@ -20,6 +20,7 @@ export interface WorkflowNodeTemplate {
     description: string;
     config: any;
   };
+  position?: { x: number; y: number };
 }
 
 export interface BusinessLogicTemplate {
@@ -36,8 +37,13 @@ export interface WorkflowTemplate {
   name: string;
   description: string;
   category: string;
-  nodes: any[];
-  connections: any[];
+  nodes: WorkflowNodeTemplate[];
+  connections: Array<{
+    id: string;
+    source: string;
+    target: string;
+    label?: string;
+  }>;
 }
 
 export interface WorkflowRule {
@@ -219,6 +225,17 @@ export class WorkflowBusinessLogicService {
     ];
   }
 
+  private static withPosition(
+    template: WorkflowNodeTemplate | undefined,
+    id: string,
+    position: { x: number; y: number }
+  ): WorkflowNodeTemplate {
+    if (!template) {
+      throw new Error(`Template not found for id: ${id}`);
+    }
+    return { ...template, id, position };
+  }
+
   /**
    * Get predefined workflow templates
    */
@@ -232,14 +249,14 @@ export class WorkflowBusinessLogicService {
         description: 'Complete loan application review workflow',
         category: 'financial',
         nodes: [
-          { ...nodeTemplates.start, id: 'start_1', position: { x: 100, y: 200 } },
-          { ...nodeTemplates.credit_check, id: 'credit_1', position: { x: 400, y: 150 } },
-          { ...nodeTemplates.income_verification, id: 'income_1', position: { x: 400, y: 250 } },
-          { ...nodeTemplates.debt_to_income_check, id: 'dti_1', position: { x: 700, y: 150 } },
-          { ...nodeTemplates.risk_assessment, id: 'risk_1', position: { x: 700, y: 250 } },
-          { ...nodeTemplates.manual_review, id: 'review_1', position: { x: 1000, y: 100 } },
-          { ...nodeTemplates.approve_loan, id: 'approve_1', position: { x: 1300, y: 150 } },
-          { ...nodeTemplates.decline_loan, id: 'decline_1', position: { x: 1300, y: 250 } },
+          this.withPosition(nodeTemplates.start, 'start_1', { x: 100, y: 200 }),
+          this.withPosition(nodeTemplates.credit_check, 'credit_1', { x: 400, y: 150 }),
+          this.withPosition(nodeTemplates.income_verification, 'income_1', { x: 400, y: 250 }),
+          this.withPosition(nodeTemplates.debt_to_income_check, 'dti_1', { x: 700, y: 150 }),
+          this.withPosition(nodeTemplates.risk_assessment, 'risk_1', { x: 700, y: 250 }),
+          this.withPosition(nodeTemplates.manual_review, 'review_1', { x: 1000, y: 100 }),
+          this.withPosition(nodeTemplates.approve_loan, 'approve_1', { x: 1300, y: 150 }),
+          this.withPosition(nodeTemplates.decline_loan, 'decline_1', { x: 1300, y: 250 }),
         ],
         connections: this.getLoanApprovalConnections(),
       },
@@ -249,10 +266,10 @@ export class WorkflowBusinessLogicService {
         description: 'Basic approval workflow',
         category: 'general',
         nodes: [
-          { ...nodeTemplates.start, id: 'start_1', position: { x: 100, y: 200 } },
-          { ...nodeTemplates.credit_check, id: 'check_1', position: { x: 400, y: 200 } },
-          { ...nodeTemplates.approve_loan, id: 'approve_1', position: { x: 700, y: 150 } },
-          { ...nodeTemplates.decline_loan, id: 'decline_1', position: { x: 700, y: 250 } },
+          this.withPosition(nodeTemplates.start, 'start_1', { x: 100, y: 200 }),
+          this.withPosition(nodeTemplates.credit_check, 'check_1', { x: 400, y: 200 }),
+          this.withPosition(nodeTemplates.approve_loan, 'approve_1', { x: 700, y: 150 }),
+          this.withPosition(nodeTemplates.decline_loan, 'decline_1', { x: 700, y: 250 }),
         ],
         connections: this.getSimpleApprovalConnections(),
       },
@@ -262,16 +279,16 @@ export class WorkflowBusinessLogicService {
         description: 'Full review with all business rules and data sources',
         category: 'financial',
         nodes: [
-          { ...nodeTemplates.start, id: 'start_1', position: { x: 100, y: 200 } },
-          { ...nodeTemplates.data_source, id: 'data_1', position: { x: 300, y: 100 } },
-          { ...nodeTemplates.credit_check, id: 'credit_1', position: { x: 500, y: 150 } },
-          { ...nodeTemplates.income_verification, id: 'income_1', position: { x: 500, y: 200 } },
-          { ...nodeTemplates.debt_to_income_check, id: 'dti_1', position: { x: 500, y: 250 } },
-          { ...nodeTemplates.risk_assessment, id: 'risk_1', position: { x: 800, y: 200 } },
-          { ...nodeTemplates.rule_set, id: 'rules_1', position: { x: 1000, y: 150 } },
-          { ...nodeTemplates.manual_review, id: 'review_1', position: { x: 1200, y: 100 } },
-          { ...nodeTemplates.approve_loan, id: 'approve_1', position: { x: 1400, y: 150 } },
-          { ...nodeTemplates.decline_loan, id: 'decline_1', position: { x: 1400, y: 250 } },
+          this.withPosition(nodeTemplates.start, 'start_1', { x: 100, y: 200 }),
+          this.withPosition(nodeTemplates.data_source, 'data_1', { x: 300, y: 100 }),
+          this.withPosition(nodeTemplates.credit_check, 'credit_1', { x: 500, y: 150 }),
+          this.withPosition(nodeTemplates.income_verification, 'income_1', { x: 500, y: 200 }),
+          this.withPosition(nodeTemplates.debt_to_income_check, 'dti_1', { x: 500, y: 250 }),
+          this.withPosition(nodeTemplates.risk_assessment, 'risk_1', { x: 800, y: 200 }),
+          this.withPosition(nodeTemplates.rule_set, 'rules_1', { x: 1000, y: 150 }),
+          this.withPosition(nodeTemplates.manual_review, 'review_1', { x: 1200, y: 100 }),
+          this.withPosition(nodeTemplates.approve_loan, 'approve_1', { x: 1400, y: 150 }),
+          this.withPosition(nodeTemplates.decline_loan, 'decline_1', { x: 1400, y: 250 }),
         ],
         connections: this.getComprehensiveReviewConnections(),
       },
@@ -554,40 +571,128 @@ export class WorkflowBusinessLogicService {
   /**
    * Validate workflow configuration
    */
-  static validateWorkflow(nodes: any[], connections: any[]): { isValid: boolean; errors: string[] } {
+  static validateWorkflow(nodes: any[], connections: any[]): { isValid: boolean; errors: string[]; warnings: string[] } {
     const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Basic structure validation
+    if (!Array.isArray(nodes)) {
+      errors.push('Nodes must be an array');
+      return { isValid: false, errors, warnings };
+    }
+
+    if (!Array.isArray(connections)) {
+      errors.push('Connections must be an array');
+      return { isValid: false, errors, warnings };
+    }
+
+    if (nodes.length === 0) {
+      errors.push('Workflow must contain at least one node');
+      return { isValid: false, errors, warnings };
+    }
 
     // Check for start node
-    const startNodes = nodes.filter(node => node.type === 'start');
+    const startNodes = nodes.filter(node => node?.type === 'start');
     if (startNodes.length === 0) {
-      errors.push('Workflow must have at least one start node');
+      errors.push('Workflow must have exactly one start node');
     } else if (startNodes.length > 1) {
       errors.push('Workflow can only have one start node');
     }
 
     // Check for end nodes
-    const endNodes = nodes.filter(node => node.type === 'end');
+    const endNodes = nodes.filter(node => node?.type === 'end');
     if (endNodes.length === 0) {
-      errors.push('Workflow must have at least one end node');
+      warnings.push('Workflow should have at least one end node');
     }
 
-    // Check for orphaned nodes
+    // Validate node structure
+    nodes.forEach((node, index) => {
+      if (!node?.id) {
+        errors.push(`Node at index ${index} is missing an ID`);
+      }
+      if (!node?.type) {
+        errors.push(`Node ${node?.id || `at index ${index}`} is missing a type`);
+      }
+      if (!node?.data?.label) {
+        warnings.push(`Node ${node?.id || `at index ${index}`} is missing a label`);
+      }
+    });
+
+    // Check for duplicate node IDs
+    const nodeIds = nodes.map(node => node?.id).filter(Boolean);
+    const duplicateIds = nodeIds.filter((id, index) => nodeIds.indexOf(id) !== index);
+    if (duplicateIds.length > 0) {
+      errors.push(`Duplicate node IDs found: ${duplicateIds.join(', ')}`);
+    }
+
+    // Validate connections
+    const nodeIdSet = new Set(nodeIds);
+    connections.forEach((conn, index) => {
+      if (!conn?.source) {
+        errors.push(`Connection at index ${index} is missing source`);
+      } else if (!nodeIdSet.has(conn.source)) {
+        errors.push(`Connection source node '${conn.source}' does not exist`);
+      }
+      
+      if (!conn?.target) {
+        errors.push(`Connection at index ${index} is missing target`);
+      } else if (!nodeIdSet.has(conn.target)) {
+        errors.push(`Connection target node '${conn.target}' does not exist`);
+      }
+    });
+
+    // Check for orphaned nodes (excluding start nodes)
     const connectedNodeIds = new Set([
-      ...connections.map(conn => conn.source),
-      ...connections.map(conn => conn.target)
+      ...connections.map(conn => conn?.source).filter(Boolean),
+      ...connections.map(conn => conn?.target).filter(Boolean)
     ]);
     
     const orphanedNodes = nodes.filter(node => 
-      node.type !== 'start' && !connectedNodeIds.has(node.id)
+      node?.type !== 'start' && node?.id && !connectedNodeIds.has(node.id)
     );
     
     if (orphanedNodes.length > 0) {
-      errors.push(`Orphaned nodes found: ${orphanedNodes.map(n => n.data.label).join(', ')}`);
+      warnings.push(`Orphaned nodes found: ${orphanedNodes.map(n => n.data?.label || n.id).join(', ')}`);
+    }
+
+    // Check for unreachable nodes (nodes that can't be reached from start)
+    if (startNodes.length === 1) {
+      const reachableNodes = this.findReachableNodes(startNodes[0].id, connections);
+      const unreachableNodes = nodes.filter(node => 
+        node?.id && node.id !== startNodes[0].id && !reachableNodes.has(node.id)
+      );
+      
+      if (unreachableNodes.length > 0) {
+        warnings.push(`Unreachable nodes found: ${unreachableNodes.map(n => n.data?.label || n.id).join(', ')}`);
+      }
     }
 
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
+      warnings
     };
+  }
+
+  private static findReachableNodes(startNodeId: string, connections: any[]): Set<string> {
+    const reachable = new Set<string>();
+    const queue = [startNodeId];
+    
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      if (reachable.has(currentId)) continue;
+      
+      reachable.add(currentId);
+      
+      // Find all nodes connected from current node
+      const outgoingConnections = connections.filter(conn => conn?.source === currentId);
+      outgoingConnections.forEach(conn => {
+        if (conn?.target && !reachable.has(conn.target)) {
+          queue.push(conn.target);
+        }
+      });
+    }
+    
+    return reachable;
   }
 }

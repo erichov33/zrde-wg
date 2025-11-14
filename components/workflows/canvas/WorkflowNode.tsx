@@ -118,6 +118,17 @@ export function WorkflowNode({
     }
   }
 
++ const hasBranchOutputs = useMemo(() => {
++   return [
++     'condition',
++     'decision',
++     'ai_decision',
++     'rule_set',
++     'validation',
++     'batch_process',
++   ].includes(node.type)
++ }, [node.type])
+
   return (
     <div
       className="absolute"
@@ -156,20 +167,57 @@ export function WorkflowNode({
               </Button>
             )}
 
-            {/* Output Connection Point */}
-            {node.type !== 'end' && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 p-0 rounded-full bg-background border-2"
-                onClick={(e) => handleConnectionPointClick(e, 'output')}
-              >
-                <Circle className="h-3 w-3" />
-              </Button>
-            )}
+-           {/* Output Connection Point */}
+-           {node.type !== 'end' && (
+-             <Button
+-               variant="outline"
+-               size="sm"
+-               className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 p-0 rounded-full bg-background border-2"
+-               onClick={(e) => handleConnectionPointClick(e, 'output')}
+-             >
+-               <Circle className="h-3 w-3" />
+-             </Button>
+-           )}
++           {/* Output Connection Points */}
++           {node.type !== 'end' && (
++             <>
++               {!hasBranchOutputs ? (
++                 <Button
++                   variant="outline"
++                   size="sm"
++                   className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 p-0 rounded-full bg-background border-2"
++                   onClick={(e) => handleConnectionPointClick(e, 'output')}
++                 >
++                   <Circle className="h-3 w-3" />
++                 </Button>
++               ) : (
++                 <>
++                   {/* Upper branch (YES/PASS/VALID/SUCCESS) */}
++                   <Button
++                     variant="outline"
++                     size="sm"
++                     className="absolute -right-3 top-1/4 -translate-y-1/2 w-6 h-6 p-0 rounded-full bg-background border-2"
++                     onClick={(e) => handleConnectionPointClick(e, 'output')}
++                     title="Branch A"
++                   >
++                     <Circle className="h-3 w-3" />
++                   </Button>
++                   {/* Lower branch (NO/FAIL/INVALID/ERROR) */}
++                   <Button
++                     variant="outline"
++                     size="sm"
++                     className="absolute -right-3 top-3/4 -translate-y-1/2 w-6 h-6 p-0 rounded-full bg-background border-2"
++                     onClick={(e) => handleConnectionPointClick(e, 'output')}
++                     title="Branch B"
++                   >
++                     <Circle className="h-3 w-3" />
++                   </Button>
++                 </>
++               )}
++             </>
++           )}
           </>
         )}
-
         <CardContent className="p-3">
           <div className="flex items-start gap-2">
             {/* Node Icon */}
@@ -181,7 +229,7 @@ export function WorkflowNode({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <h4 className={cn('font-medium text-sm truncate', colors.text)}>
-                  {node.data.label}
+                  {node.data?.label || node.type}
                 </h4>
                 {hasErrors && (
                   <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
@@ -276,3 +324,4 @@ export function WorkflowNode({
     </div>
   )
 }
+export const MemoWorkflowNode = React.memo(WorkflowNode)

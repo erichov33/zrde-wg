@@ -14,7 +14,7 @@ export function isValidWorkflowConnection(obj: any): obj is WorkflowConnection {
     (obj.type === undefined || typeof obj.type === 'string') &&
     (obj.label === undefined || typeof obj.label === 'string') &&
     (obj.condition === undefined || typeof obj.condition === 'string') &&
-    (obj.conditions === undefined || typeof obj.conditions === 'object')
+    (obj.conditions === undefined || typeof obj.conditions === 'object' || typeof obj.conditions === 'string')
   )
 }
 
@@ -49,5 +49,5 @@ export function isLegacyConnection(connection: any): boolean {
 }
 
 export function isUnifiedConnection(connection: any): boolean {
-  return !!(connection.conditions && typeof connection.conditions === 'object')
+  return !!(connection.conditions !== undefined)
 }

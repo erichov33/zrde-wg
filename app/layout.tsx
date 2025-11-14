@@ -7,6 +7,7 @@ import { AuthProvider } from "@/lib/contexts/auth-context"
 import { ApplicationsProvider } from "@/lib/contexts/applications-context"
 import "@/app/globals.css"
 import { Toaster } from "sonner"
+import { WorkflowServiceProvider } from "@/lib/providers/WorkflowServiceProvider"
 
 export const metadata: Metadata = {
   title: "Zinduka Decision Engine",
@@ -19,7 +20,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={GeistSans.className}>
         <ThemeProvider
           attribute="class"
@@ -29,7 +30,9 @@ export default function RootLayout({
         >
           <AuthProvider>
             <ApplicationsProvider>
-              {children}
+              <WorkflowServiceProvider>
+                {children}
+              </WorkflowServiceProvider>
             </ApplicationsProvider>
           </AuthProvider>
         </ThemeProvider>
